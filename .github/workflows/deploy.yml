@@ -1,0 +1,39 @@
+name: deploy
+
+# Apply infra/main and ship the ingest Lambda. Needs the one-time bootstrap
+# (infra/bootstrap) and two repository variables: AWS_ROLE_ARN, TF_STATE_BUCKET.
+on:
+  push:
+    branches: [main]
+    paths: ["infra/main/**", "src/**", "scripts/build_lambda.sh", "uv.lock", ".github/workflows/deploy.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # for the AWS OIDC login
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: vars.AWS_ROLE_ARN != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.10"
+      - run: ./scripts/build_lambda.sh
+      - run: terraform -chdir=infra/main init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+      - run: terraform -chdir=infra/main apply -auto-approve -input=false
+      - name: Kick off an ingest now rather than waiting for tomorrow
+        run: aws lambda invoke --function-name footnote-ingest --invocation-type Event --payload '{"max_new":40}' --cli-binary-format raw-in-base64-out /dev/null
