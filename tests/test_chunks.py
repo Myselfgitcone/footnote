@@ -104,3 +104,47 @@ def test_embedding_text_names_the_company_year_and_section():
         "Apple Inc. (AAPL) 10-K for fiscal 2024, Item 1A Risk Factors: Supply Chain Risks\n"
     )
     assert "Apple" not in first.text  # the header is for the embedding, not the quoted passage
+
+
+def test_page_headers_and_footers_are_left_out():
+    pages = []
+    for page in range(1, 6):
+        pages += [
+            "THE GOLDMAN SACHS GROUP, INC. AND SUBSIDIARIES",
+            "Management's Discussion and Analysis",
+            prose(8, f"page{page}"),
+            f"Goldman Sachs 2024 Form 10-K {page + 40}",
+        ]
+    filing = FILING | {
+        "sections": {
+            "7": {
+                "title": "Management's Discussion and Analysis",
+                "found_by": "item",
+                "text": "\n".join(pages),
+            }
+        }
+    }
+    found = chunk_filing(filing)
+    text = "\n".join(c.text for c in found)
+    assert "SUBSIDIARIES" not in text and "Form 10-K" not in text
+    assert "Discussion and Analysis" not in text
+    assert all("page" in c.text for c in found)
+    assert {c.heading for c in found} == {""}
+
+
+def test_footer_patterns():
+    from footnote.chunks import FOOTER
+
+    assert FOOTER.match("Apple Inc. | 2024 Form 10-K | 7")
+    assert FOOTER.match("45 JPMorgan Chase & Co./2024 Form 10-K")
+    assert FOOTER.match("Walmart Inc. 2025 Annual Report 33")
+    assert not FOOTER.match("See Part II, Item 7 of this Form 10-K")
+    assert not FOOTER.match("Form 10-K")
+
+
+def test_parts_and_sentence_fragments_are_not_subheadings():
+    assert not looks_like_subheading("Part I")
+    assert not looks_like_subheading("PART II")
+    assert not looks_like_subheading("The Company has also implemented changes to its")
+    assert looks_like_subheading("Legal, Tax, Regulatory, Compliance, Reputational and Other Risks")
+    assert looks_like_subheading("Macroeconomic and Industry Risks")

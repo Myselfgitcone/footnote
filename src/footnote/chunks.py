@@ -23,6 +23,15 @@ OVERLAP_CHARS = 250
 MIN_CHARS = 80  # a passage shorter than this is a stray heading or a page artifact
 
 SENTENCE_END = re.compile(r"(?<=[.!?;])\s+(?=[A-Z(\"'“])")
+# Page footers: "Apple Inc. | 2024 Form 10-K | 7", "45 JPMorgan Chase & Co./2024 Form 10-K".
+_FORM = r"(?:form 10-k|annual report)"
+FOOTER = re.compile(
+    rf"^(?:\d{{1,3}}\s*\|?\s*.{{0,80}}{_FORM}|.{{0,80}}{_FORM}\s*\|?\s*\d{{1,3}})$", re.IGNORECASE
+)
+PART = re.compile(r"^part\s+[ivx]+\b", re.IGNORECASE)
+# Words a title leaves lowercase; any other word in a title is capitalized.
+MINOR_WORDS = set("a an and as at by for from in into of on or our its the to with vs versus".split())
+RUNNING_HEADER_REPEATS = 4
 
 
 @dataclass(frozen=True)
@@ -42,12 +51,13 @@ class Chunk:
 def chunk_filing(filing: dict) -> list[Chunk]:
     """All passages of a clean filing, as written by ingest."""
     chunks = []
+    furniture = page_furniture(filing)
     for item, section in filing["sections"].items():
         header = (
             f"{filing['company']} ({filing['ticker']}) {filing['form']} for fiscal {filing['fiscal_year']}, "
             f"Item {item} {section['title']}"
         )
-        for position, (heading, text) in enumerate(passages(section["text"])):
+        for position, (heading, text) in enumerate(passages(section["text"], furniture)):
             chunks.append(
                 Chunk(
                     id=chunk_id(filing["accession"], item, position),
@@ -61,14 +71,35 @@ def chunk_filing(filing: dict) -> list[Chunk]:
     return chunks
 
 
+def page_furniture(filing: dict) -> set[str]:
+    """Lines that are page headers or footers, not content.
+
+    Footers name the form and a page number. Running headers repeat on every
+    page: the company's name in capitals, or the section's own title.
+    """
+    counts: dict[str, int] = {}
+    for section in filing["sections"].values():
+        for line in section["text"].split("\n"):
+            line = line.strip()
+            if 0 < len(line) <= 120:
+                counts[line] = counts.get(line, 0) + 1
+    titles = {_bare(section["title"]) for section in filing["sections"].values()}
+    running = {
+        line
+        for line, count in counts.items()
+        if count >= RUNNING_HEADER_REPEATS and (_is_capitals(line) or _bare(line) in titles)
+    }
+    return running | {line for line in counts if FOOTER.match(line)}
+
+
 def chunk_id(accession: str, item: str, position: int) -> str:
     # Accession first, so every passage of a filing can be listed and replaced by prefix.
     return f"{accession}#{item}#{position:04d}"
 
 
-def passages(text: str) -> list[tuple[str, str]]:
-    """(subheading, passage) pairs, in order."""
-    paragraphs = _paragraphs(text)
+def passages(text: str, furniture: set[str] | frozenset[str] = frozenset()) -> list[tuple[str, str]]:
+    """(subheading, passage) pairs, in order. Lines in `furniture` are left out."""
+    paragraphs = [p for p in _paragraphs(text) if p not in furniture]
     out: list[tuple[str, str]] = []
     heading = current_heading = ""
     current: list[str] = []  # the overlap carried in, then this passage's own paragraphs
@@ -132,7 +163,12 @@ def looks_like_subheading(line: str) -> bool:
     """
     if len(line) > 120 or len(line) < 4 or line[-1] in ".,;:)" or not line[0].isupper():
         return False
-    if len(line.split()) > 16:
+    words = line.split()
+    if len(words) > 16 or PART.match(line):
+        return False
+    # Titles capitalize their main words; a sentence fragment doesn't.
+    main = [w for w in words if w.lower().strip(",") not in MINOR_WORDS and w[0].isalpha()]
+    if len(words) >= 4 and sum(w[0].isupper() for w in main) < 0.6 * len(main):
         return False
     letters = sum(c.isalpha() for c in line)
     return letters / len(line) > 0.75
@@ -170,3 +206,12 @@ def _paragraphs(text: str) -> list[str]:
 
 def _size(paragraphs: list[str]) -> int:
     return sum(len(p) + 1 for p in paragraphs)
+
+
+def _bare(line: str) -> str:
+    return re.sub(r"[^a-z ]", "", line.lower().replace("\u2019", "'").replace("'", "")).strip()
+
+
+def _is_capitals(line: str) -> bool:
+    letters = [c for c in line if c.isalpha()]
+    return len(letters) >= 6 and all(c.isupper() for c in letters)
