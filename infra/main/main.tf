@@ -64,6 +64,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
     filter {}
     noncurrent_version_expiration { noncurrent_days = 30 }
   }
+  rule {
+    id     = "expire-run-records"
+    status = "Enabled"
+    filter { prefix = "runs/" }
+    expiration { days = 30 }
+  }
 }
 
 # ---------------------------------------------------------------- code
@@ -158,8 +164,11 @@ data "aws_iam_policy_document" "index" {
     ]
   }
   statement {
-    actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.data.arn}/index/*"]
+    actions = ["s3:PutObject"]
+    resources = [
+      "${aws_s3_bucket.data.arn}/index/*",
+      "${aws_s3_bucket.data.arn}/runs/footnote-index/*",
+    ]
   }
   statement {
     # Without it, asking for a marker that isn't there yet is "access denied", not "not found".
@@ -205,6 +214,19 @@ resource "aws_lambda_function" "index" {
     }
   }
   depends_on = [aws_cloudwatch_log_group.index, aws_iam_role_policy.index]
+}
+
+# Runs are started without waiting and report through runs/ in the bucket. A
+# failed run isn't retried behind the caller's back: the next round, or the next
+# day's run, picks up where it stopped.
+resource "aws_lambda_function_event_invoke_config" "ingest" {
+  function_name          = aws_lambda_function.ingest.function_name
+  maximum_retry_attempts = 0
+}
+
+resource "aws_lambda_function_event_invoke_config" "index" {
+  function_name          = aws_lambda_function.index.function_name
+  maximum_retry_attempts = 0
 }
 
 # ---------------------------------------------------------------- daily schedule

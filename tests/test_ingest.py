@@ -111,6 +111,26 @@ def test_s3_store_round_trip(bucket):
 def test_lambda_handler_writes_to_the_bucket(bucket, monkeypatch):
     monkeypatch.setenv("FOOTNOTE_BUCKET", bucket)
     monkeypatch.setattr(handler, "Edgar", lambda user_agent: FakeEdgar(FILINGS))
-    result = handler.ingest_handler({"tickers": ["AAPL"], "max_new": 1})
+    result = handler.ingest_handler({"tickers": ["AAPL"], "max_new": 1, "run_id": "gh-1-1"})
     assert result["added_count"] == 1 and result["remaining"] == 1
     assert S3Store(bucket).exists("clean/catalog.json")
+    # The result is left in the bucket for a caller that didn't wait on the line.
+    record = json.loads(S3Store(bucket).get("runs/footnote-ingest/gh-1-1.json"))
+    assert record["remaining"] == 1 and record["run_id"] == "gh-1-1" and "summary" in record
+
+
+def test_a_failed_run_still_leaves_a_record(bucket, monkeypatch):
+    class Context:
+        function_name = "footnote-ingest"
+        aws_request_id = "req-42"
+
+    class Down(FakeEdgar):
+        def ciks(self, tickers):
+            raise ConnectionError("SEC is down")
+
+    monkeypatch.setenv("FOOTNOTE_BUCKET", bucket)
+    monkeypatch.setattr(handler, "Edgar", lambda user_agent: Down(FILINGS))
+    with pytest.raises(ConnectionError):
+        handler.ingest_handler({}, Context())
+    record = json.loads(S3Store(bucket).get("runs/footnote-ingest/req-42.json"))
+    assert record["error"] == "ConnectionError: SEC is down" and "Traceback" in record["traceback"]
