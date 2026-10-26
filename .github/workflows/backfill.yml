@@ -32,4 +32,4 @@ jobs:
         if: inputs.ingest
         run: scripts/invoke_until_done.sh footnote-ingest '{"max_new":40}' 6
       - name: Embed passages until done
-        run: scripts/invoke_until_done.sh footnote-index '{"budget_s":720}' 16
+        run: scripts/invoke_until_done.sh footnote-index '{"budget_s":780}' 16
