@@ -38,7 +38,7 @@ class Report:
     seconds: float = 0.0
 
     def as_dict(self) -> dict:
-        return self.__dict__ | {"added_count": len(self.added)}
+        return self.__dict__ | {"added_count": len(self.added), "summary": str(self)}
 
     def __str__(self) -> str:
         line = (

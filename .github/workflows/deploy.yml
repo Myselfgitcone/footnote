@@ -1,12 +1,19 @@
 name: deploy
 
-# Apply infra/main and ship the ingest Lambda. Needs the one-time bootstrap
+# Apply infra/main and ship the Lambdas. Needs the one-time bootstrap
 # (infra/bootstrap), the deploy user's key as secrets AWS_ACCESS_KEY_ID and
-# AWS_SECRET_ACCESS_KEY, and the repository variable TF_STATE_BUCKET.
+# AWS_SECRET_ACCESS_KEY, the PINECONE_API_KEY secret, and the repository
+# variable TF_STATE_BUCKET.
 on:
   push:
     branches: [main]
-    paths: ["infra/main/**", "src/**", "scripts/build_lambda.sh", "uv.lock", ".github/workflows/deploy.yml"]
+    paths:
+      - "infra/main/**"
+      - "src/**"
+      - "scripts/build_lambda.sh"
+      - "scripts/fetch_model.sh"
+      - "uv.lock"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -34,7 +41,20 @@ jobs:
         with:
           terraform_version: "~1.10"
       - run: ./scripts/build_lambda.sh
+      # The index Lambda reads the model from the bucket. It's copied there once and
+      # never replaced: vectors from two versions of a model don't compare.
+      - name: Put the embedding model in the bucket, if it isn't there
+        run: |
+          bucket="footnote-data-$(aws sts get-caller-identity --query Account --output text)"
+          if aws s3api head-object --bucket "$bucket" --key models/bge-small-en-v1.5/model.onnx > /dev/null 2>&1; then
+            echo "Already in s3://$bucket/models/bge-small-en-v1.5/"
+          else
+            ./scripts/fetch_model.sh
+            aws s3 cp build/model/ "s3://$bucket/models/bge-small-en-v1.5/" --recursive
+          fi
       - run: terraform -chdir=infra/main init -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
       - run: terraform -chdir=infra/main apply -auto-approve -input=false
+        env:
+          TF_VAR_pinecone_api_key: ${{ secrets.PINECONE_API_KEY }}
       - name: Kick off an ingest now rather than waiting for tomorrow
         run: aws lambda invoke --function-name footnote-ingest --invocation-type Event --payload '{"max_new":40}' --cli-binary-format raw-in-base64-out /dev/null
