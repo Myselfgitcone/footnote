@@ -1,7 +1,12 @@
-# One-time setup, applied by hand with an admin login:
+# One-time setup, applied by hand with an admin login (CloudShell works):
 #   - an S3 bucket for Terraform's state
-#   - an OIDC trust so GitHub Actions can deploy without long-lived AWS keys
+#   - a deploy user for GitHub Actions, allowed to manage footnote-* resources only
 # After this, every change goes through CI (infra/main).
+#
+# Why a user and not GitHub OIDC: accounts made with AWS's new sign-up sit in an
+# organization whose service control policy denies iam:*Provider* on both the
+# Free and Paid plans, so the OIDC provider can't be created. The user's access
+# key is made by hand in the console, so it never lands in Terraform state.
 
 terraform {
   required_version = ">= 1.6"
@@ -22,10 +27,6 @@ variable "region" {
   default = "us-east-1" # same region as Pinecone's free tier
 }
 
-variable "github_repo" {
-  type    = string
-  default = "Myselfgitcone/footnote"
-}
 
 data "aws_caller_identity" "me" {}
 
@@ -57,38 +58,8 @@ resource "aws_s3_bucket_public_access_block" "state" {
   restrict_public_buckets = true
 }
 
-resource "aws_iam_openid_connect_provider" "github" {
-  url            = "https://token.actions.githubusercontent.com"
-  client_id_list = ["sts.amazonaws.com"]
-}
-
-# Only this repo's main branch can deploy; pull requests can only plan.
-data "aws_iam_policy_document" "trust" {
-  statement {
-    actions = ["sts:AssumeRoleWithWebIdentity"]
-    principals {
-      type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "token.actions.githubusercontent.com:aud"
-      values   = ["sts.amazonaws.com"]
-    }
-    condition {
-      test     = "StringLike"
-      variable = "token.actions.githubusercontent.com:sub"
-      values = [
-        "repo:${var.github_repo}:ref:refs/heads/main",
-        "repo:${var.github_repo}:pull_request",
-      ]
-    }
-  }
-}
-
-resource "aws_iam_role" "deploy" {
-  name               = "footnote-deploy"
-  assume_role_policy = data.aws_iam_policy_document.trust.json
+resource "aws_iam_user" "deploy" {
+  name = "footnote-deploy"
 }
 
 # Enough to manage Footnote's own resources, all named footnote-*, and nothing else.
@@ -140,9 +111,9 @@ data "aws_iam_policy_document" "deploy" {
   }
 }
 
-resource "aws_iam_role_policy" "deploy" {
+resource "aws_iam_user_policy" "deploy" {
   name   = "footnote-deploy"
-  role   = aws_iam_role.deploy.id
+  user   = aws_iam_user.deploy.name
   policy = data.aws_iam_policy_document.deploy.json
 }
 
@@ -150,6 +121,6 @@ output "state_bucket" {
   value = aws_s3_bucket.state.bucket
 }
 
-output "deploy_role_arn" {
-  value = aws_iam_role.deploy.arn
+output "deploy_user" {
+  value = aws_iam_user.deploy.name
 }
