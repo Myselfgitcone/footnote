@@ -1,0 +1,38 @@
+name: backfill
+
+# The first load: run the ingest Lambda until every filing is in. Each run is
+# capped to fit in Lambda's 15 minutes, so this loops until nothing is left.
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Ingest until done
+        run: |
+          for round in 1 2 3 4 5 6; do
+            aws lambda invoke --function-name footnote-ingest --payload '{"max_new":40}' \
+              --cli-binary-format raw-in-base64-out --cli-read-timeout 900 out.json > /dev/null
+            python3 - <<'PY'
+          import json, sys
+          r = json.load(open("out.json"))
+          if "errorMessage" in r:
+              sys.exit(f"Lambda failed: {r['errorMessage']}")
+          print(f"added {r['added_count']}, already had {r['skipped']}, failed {len(r['failed'])}, left {r['remaining']}")
+          for k, v in r.get("missing_sections", {}).items():
+              print(f"  sections not found in {k}: {', '.join(v)}")
+          open("remaining", "w").write(str(r["remaining"]))
+          PY
+            [ "$(cat remaining)" = "0" ] && exit 0
+          done
+          echo "::warning::Still filings left after 6 rounds; the daily run will finish them."

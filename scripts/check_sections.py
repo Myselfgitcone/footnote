@@ -1,0 +1,31 @@
+"""Print what the parser found in each filing, and fail if a core section is missing."""
+
+import json
+import sys
+from pathlib import Path
+
+REQUIRED = ("1A", "7")
+
+root = Path(sys.argv[1])
+catalog = json.loads((root / "clean/catalog.json").read_text())
+problems = []
+print(f"{'filing':<28}{'1':>9}{'1A':>9}{'1C':>8}{'3':>8}{'7':>9}{'7A':>8}  found by")
+for entry in catalog:
+    filing = json.loads((root / f"clean/filings/{entry['ticker']}/{entry['accession']}.json").read_text())
+    parts = filing["sections"]
+    sizes = "".join(
+        f"{len(parts[k]['text']) if k in parts else 0:>{w}}"
+        for k, w in (("1", 9), ("1A", 9), ("1C", 8), ("3", 8), ("7", 9), ("7A", 8))
+    )
+    how = ",".join(sorted({p["found_by"] for p in parts.values()}))
+    print(f"{entry['ticker'] + ' FY' + str(entry['fiscal_year']):<28}{sizes}  {how}")
+    missing = [k for k in REQUIRED if k not in parts or len(parts[k]["text"]) < 5_000]
+    if missing:
+        problems.append(f"{entry['ticker']} FY{entry['fiscal_year']}: {', '.join(missing)}")
+    # Short items that come back huge have run into something else.
+    bloated = [k for k in ("3", "1C", "7A") if k in parts and len(parts[k]["text"]) > 100_000]
+    if bloated:
+        problems.append(f"{entry['ticker']} FY{entry['fiscal_year']}: {', '.join(bloated)} too long")
+if problems:
+    sys.exit("Sections look wrong: " + "; ".join(problems))
+print(f"{len(catalog)} filings, all with risk factors and MD&A.")
