@@ -24,7 +24,7 @@ provider "aws" {
 
 variable "region" {
   type    = string
-  default = "us-east-1" # same region as Pinecone's free tier
+  default = "us-east-2" # new-sign-up projects are pinned to Ohio until advanced features are on
 }
 
 

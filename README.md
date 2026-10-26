@@ -55,6 +55,9 @@ denies `iam:*Provider*` on every plan, so the OIDC provider can't be created. Th
 key is created by hand in the console, never by Terraform, so it isn't in state,
 and it can be rotated at any time.
 
+Everything runs in `us-east-2` (Ohio): projects made with AWS's new sign-up are
+limited to one region until advanced features are activated.
+
 ### One-time setup
 
 `infra/bootstrap` creates the Terraform state bucket and the deploy user. Run it
