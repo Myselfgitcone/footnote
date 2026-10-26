@@ -31,3 +31,22 @@ variable "pinecone_api_key" {
   description = "From the PINECONE_API_KEY repository secret. Ends up in the Lambda's environment and in Terraform state, both encrypted."
   sensitive   = true
 }
+
+variable "anthropic_api_key" {
+  type        = string
+  description = "From the ANTHROPIC_API_KEY repository secret: Claude, which plans and writes answers."
+  sensitive   = true
+}
+
+variable "langsmith_api_key" {
+  type        = string
+  description = "From the LANGSMITH_API_KEY repository secret: traces of every answer. Empty turns tracing off."
+  sensitive   = true
+  default     = ""
+}
+
+variable "allowed_origins" {
+  type        = list(string)
+  description = "Web pages allowed to call the API from a browser."
+  default     = ["https://myselfgitcone.github.io", "http://localhost:8000"]
+}

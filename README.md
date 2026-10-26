@@ -3,7 +3,9 @@
 Ask questions about public companies' SEC filings and get answers that cite
 their source, with the numbers checked against the SEC's own figures.
 
-Work in progress. Done so far: getting the filings, and searching them.
+Ask it something: **https://myselfgitcone.github.io/footnote/**
+
+Work in progress. Done so far: getting the filings, searching them, and answering questions.
 
 ## Getting the filings
 
@@ -81,13 +83,54 @@ manufactured?" comes back with the passage about its outsourcing partners.
 uv run footnote search "How does the company manage cybersecurity risk?" --ticker JPM --year 2024
 ```
 
+## Answering questions
+
+A LangGraph graph (`ask.py`) with four steps:
+
+```
+plan ──┬── retrieve (passages, Pinecone) ──┬── answer
+       └── lookup   (figures, XBRL)    ────┘
+```
+
+1. **plan**: Claude Haiku reads the question and returns a structured plan:
+   which of the twenty companies and which fiscal years it's about, which headline
+   figures it needs (revenue, net income, diluted EPS, ...), what to search the
+   text for, and whether the filings can answer it at all.
+2. **retrieve** and **lookup** run in parallel. Retrieval searches Pinecone
+   once per company, so one with a longer 10-K can't crowd out the others.
+   Lookup reads the figures from the XBRL data filed with each 10-K.
+3. **answer**: Claude gets only what was found, numbered `[S1]` for passages and
+   `[F1]` for figures, and has to cite one for every claim. Citations to
+   sources it wasn't given are removed before the answer is shown.
+
+**Figures come from XBRL, never from reading the text.** `facts.py` keeps,
+for each 10-K, the figures that filing reported for its own fiscal year: the
+fact's accession number is the filing's and its period ends on the filing's
+report date. So "Apple's 2024 revenue" is the $391,035 million in Apple's 2024
+10-K, not a quarter, a prior year's column, or a later restatement.
+
+The API is FastAPI, run in a Lambda behind a function URL (through Mangum).
+Every question costs a Claude call, so answers are cached for a day and new
+questions are capped per day. Traces of every answer go to LangSmith. The page
+in `site/` is published to GitHub Pages after each deploy.
+
+**Checked for real.** CI asks Claude three questions through the real index.
+It checks that Apple's fiscal 2024 revenue comes back as exactly $391,035
+million with the figure cited, that "Where does Apple make its products?" cites
+the passage about its outsourcing partners, and that an off-topic question is
+declined.
+
+```bash
+uv run footnote ask "How did Walmart's net income change over the last two years?" --s3
+```
+
 ## AWS, as code
 
 `infra/main` (applied by GitHub Actions on every merge): the data bucket
 (versioned, encrypted, private), the ingest and index Lambdas, daily schedules
-(fetch at 7:30am Chicago time, embed at 8:15), and a $1 monthly budget alarm.
-Both Lambdas run one package, uploaded through the bucket since it's over the
-50MB Lambda takes directly.
+(fetch at 7:30am Chicago time, embed at 8:15), the API Lambda and its public
+URL, and a $1 monthly budget alarm. All three Lambdas run one package, uploaded
+through the bucket since it's over the 50MB Lambda takes directly.
 
 GitHub Actions deploys as `footnote-deploy`, an IAM user that can only manage
 resources named `footnote-*`. GitHub OIDC would avoid a stored key, but accounts
@@ -112,15 +155,16 @@ git clone https://github.com/Myselfgitcone/footnote && cd footnote/infra/bootstr
 ```
 
 Then, in the IAM console, create an access key for `footnote-deploy` and store it
-in the repository as secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, a
-Pinecone API key (free plan) as `PINECONE_API_KEY`, plus the state bucket as a
-variable:
+in the repository as secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. Add
+`PINECONE_API_KEY` (free plan), `ANTHROPIC_API_KEY` and `LANGSMITH_API_KEY` (free
+plan) as secrets too, and the state bucket as a variable:
 
 ```bash
 gh variable set TF_STATE_BUCKET --body footnote-tfstate-<account id>
 ```
 
-The next merge deploys. Run the `backfill` workflow once to load the history.
+In Settings → Pages, set the source to GitHub Actions. The next merge deploys.
+Run the `backfill` workflow once to load the history.
 
 ## Run it locally
 

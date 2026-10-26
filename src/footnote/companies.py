@@ -11,29 +11,31 @@ from dataclasses import dataclass
 class Company:
     ticker: str
     sector: str
+    name: str  # what people call it; the SEC's legal name comes with each filing
 
 
 COMPANIES = (
-    Company("AAPL", "Technology"),
-    Company("MSFT", "Technology"),
-    Company("GOOGL", "Technology"),
-    Company("AMZN", "Consumer"),
-    Company("NVDA", "Technology"),
-    Company("META", "Technology"),
-    Company("TSLA", "Consumer"),
-    Company("JPM", "Financials"),
-    Company("BAC", "Financials"),
-    Company("GS", "Financials"),
-    Company("WMT", "Consumer"),
-    Company("COST", "Consumer"),
-    Company("TGT", "Consumer"),
-    Company("JNJ", "Healthcare"),
-    Company("UNH", "Healthcare"),
-    Company("PFE", "Healthcare"),
-    Company("XOM", "Energy"),
-    Company("CVX", "Energy"),
-    Company("KO", "Consumer"),
-    Company("DIS", "Communication"),
+    Company("AAPL", "Technology", "Apple"),
+    Company("MSFT", "Technology", "Microsoft"),
+    Company("GOOGL", "Technology", "Alphabet (Google)"),
+    Company("AMZN", "Consumer", "Amazon"),
+    Company("NVDA", "Technology", "NVIDIA"),
+    Company("META", "Technology", "Meta Platforms (Facebook)"),
+    Company("TSLA", "Consumer", "Tesla"),
+    Company("JPM", "Financials", "JPMorgan Chase"),
+    Company("BAC", "Financials", "Bank of America"),
+    Company("GS", "Financials", "Goldman Sachs"),
+    Company("WMT", "Consumer", "Walmart"),
+    Company("COST", "Consumer", "Costco"),
+    Company("TGT", "Consumer", "Target"),
+    Company("JNJ", "Healthcare", "Johnson & Johnson"),
+    Company("UNH", "Healthcare", "UnitedHealth Group"),
+    Company("PFE", "Healthcare", "Pfizer"),
+    Company("XOM", "Energy", "Exxon Mobil"),
+    Company("CVX", "Energy", "Chevron"),
+    Company("KO", "Consumer", "Coca-Cola"),
+    Company("DIS", "Communication", "Walt Disney"),
 )
 
 TICKERS = tuple(c.ticker for c in COMPANIES)
+NAMES = {c.ticker: c.name for c in COMPANIES}

@@ -2,8 +2,8 @@ name: deploy
 
 # Apply infra/main and ship the Lambdas. Needs the one-time bootstrap
 # (infra/bootstrap), the deploy user's key as secrets AWS_ACCESS_KEY_ID and
-# AWS_SECRET_ACCESS_KEY, the PINECONE_API_KEY secret, and the repository
-# variable TF_STATE_BUCKET.
+# AWS_SECRET_ACCESS_KEY, the PINECONE_API_KEY, ANTHROPIC_API_KEY and
+# LANGSMITH_API_KEY secrets, and the repository variable TF_STATE_BUCKET.
 on:
   push:
     branches: [main]
@@ -40,6 +40,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.10"
+          terraform_wrapper: false # plain stdout, so outputs can be read into variables
       - run: ./scripts/build_lambda.sh
       # The index Lambda reads the model from the bucket. It's copied there once and
       # never replaced: vectors from two versions of a model don't compare.
@@ -56,5 +57,16 @@ jobs:
       - run: terraform -chdir=infra/main apply -auto-approve -input=false
         env:
           TF_VAR_pinecone_api_key: ${{ secrets.PINECONE_API_KEY }}
+          TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_langsmith_api_key: ${{ secrets.LANGSMITH_API_KEY }}
+      - name: The API is up
+        run: |
+          url=$(terraform -chdir=infra/main output -raw ask_url)
+          echo "API: $url"
+          for attempt in 1 2 3 4 5 6; do
+            curl -fsS --max-time 60 "${url}health" && exit 0
+            sleep 10
+          done
+          exit 1
       - name: Kick off an ingest now rather than waiting for tomorrow
         run: aws lambda invoke --function-name footnote-ingest --invocation-type Event --payload '{"max_new":40}' --cli-binary-format raw-in-base64-out /dev/null
