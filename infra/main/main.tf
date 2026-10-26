@@ -150,7 +150,7 @@ resource "aws_iam_role" "index" {
 
 data "aws_iam_policy_document" "index" {
   statement {
-    actions   = ["s3:GetObject"]
+    actions = ["s3:GetObject"]
     resources = [
       "${aws_s3_bucket.data.arn}/clean/*",
       "${aws_s3_bucket.data.arn}/index/*",
@@ -228,7 +228,7 @@ resource "aws_iam_role_policy" "scheduler" {
   name = "footnote-scheduler"
   role = aws_iam_role.scheduler.id
   policy = jsonencode({
-    Version   = "2012-10-17"
+    Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
       Action   = "lambda:InvokeFunction"
