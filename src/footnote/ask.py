@@ -258,9 +258,9 @@ def claude(model: str, api_key: str) -> tuple[Planner, Writer]:
     """The planner and writer, both Claude through LangChain (so LangSmith traces them)."""
     from langchain_anthropic import ChatAnthropic
 
-    planning = ChatAnthropic(model=model, api_key=api_key, temperature=0, max_tokens=500, max_retries=2)
+    planning = ChatAnthropic(model=model, api_key=api_key, max_tokens=500, max_retries=2)
     planning = planning.with_structured_output(Plan)
-    writing = ChatAnthropic(model=model, api_key=api_key, temperature=0, max_tokens=700, max_retries=2)
+    writing = ChatAnthropic(model=model, api_key=api_key, max_tokens=700, max_retries=2)
 
     def planner(question: str) -> Plan:
         return planning.invoke([("system", planner_instructions()), ("human", question)])
