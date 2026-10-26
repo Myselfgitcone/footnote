@@ -29,6 +29,9 @@ jobs:
       - run: ./scripts/build_lambda.sh
       # Lambda runs Python 3.12, and the package has compiled parts built for it.
       - run: cd build/lambda && uv run --no-project --python 3.12 python -I -c "import sys; sys.path.insert(0, '.'); import footnote.handler"
+      - run: ./scripts/fetch_model.sh
+      - name: The real model, run from the package, finds the right passage
+        run: uv run --no-project --python 3.12 python -I scripts/check_embedding.py build/lambda build/model
 
   terraform:
     runs-on: ubuntu-latest
@@ -54,3 +57,26 @@ jobs:
         run: uv run footnote ingest --ticker AAPL --ticker JPM --ticker GS --ticker WMT --since-year 2024
       - name: Every filing has risk factors and MD&A
         run: uv run python scripts/check_sections.py out/store
+      - name: How they cut into passages
+        run: uv run python scripts/chunk_stats.py out/store
+
+  # Real filings through real Pinecone, in a namespace of their own that's removed after.
+  pinecone:
+    runs-on: ubuntu-latest
+    env:
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      FOOTNOTE_NAMESPACE: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: ./scripts/fetch_model.sh
+      - run: uv run footnote ingest --ticker AAPL --since-year 2024
+      - run: uv run footnote index --ticker AAPL
+      - name: Search finds the passage that answers the question
+        run: uv run python scripts/check_search.py
+      - name: Remove the namespace
+        if: always()
+        run: uv run python -c "from footnote.embed import DIMENSION; from footnote.settings import Settings; from footnote.vectors import PineconeVectors; s = Settings(); PineconeVectors(s.pinecone_api_key, DIMENSION, namespace=s.namespace).drop_namespace()"

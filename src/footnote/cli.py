@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 
+from footnote import index as indexing
 from footnote import ingest as ingesting
 from footnote.companies import TICKERS
 from footnote.edgar import Edgar
@@ -41,6 +42,63 @@ def ingest(
     typer.echo(report)
     if report.failed:
         raise typer.Exit(1)
+
+
+@app.command()
+def index(
+    ticker: list[str] = typer.Option(None, help="Limit to these tickers."),
+    s3: bool = typer.Option(False, help="Read filings from the S3 bucket instead of the local folder."),
+    namespace: str = typer.Option(None, help="Pinecone namespace. Default: FOOTNOTE_NAMESPACE or 10k."),
+    budget_s: float = typer.Option(3600, help="Stop starting new filings after this many seconds."),
+) -> None:
+    """Chunk and embed indexed filings into Pinecone."""
+    from footnote.embed import DIMENSION, OnnxEmbedder
+    from footnote.vectors import PineconeVectors
+
+    settings = Settings()
+    store = S3Store(settings.bucket) if s3 else LocalStore(settings.local_dir)
+    vectors = PineconeVectors(settings.pinecone_api_key, DIMENSION, namespace=namespace or settings.namespace)
+    report = indexing.run(store, OnnxEmbedder(settings.model_dir), vectors, tickers=ticker, budget_s=budget_s)
+    typer.echo(report)
+    if report.failed:
+        raise typer.Exit(1)
+
+
+@app.command()
+def search(
+    question: str,
+    ticker: list[str] = typer.Option(None, help="Only these companies."),
+    year: int = typer.Option(None, help="Only this fiscal year."),
+    item: str = typer.Option(None, help="Only this 10-K item, e.g. 1A."),
+    k: int = typer.Option(5, help="How many passages."),
+    namespace: str = typer.Option(None, help="Pinecone namespace. Default: FOOTNOTE_NAMESPACE or 10k."),
+) -> None:
+    """Show the passages closest to a question, with where each came from."""
+    from footnote.embed import DIMENSION, OnnxEmbedder
+    from footnote.vectors import PineconeVectors
+
+    settings = Settings()
+    vectors = PineconeVectors(settings.pinecone_api_key, DIMENSION, namespace=namespace or settings.namespace)
+    query = OnnxEmbedder(settings.model_dir).query(question)
+    for hit in vectors.search(query, k, filters(ticker, year, item)):
+        where = f"{hit['ticker']} FY{hit['fiscal_year']} Item {hit['item']}"
+        if hit.get("heading"):
+            where += f" > {hit['heading']}"
+        typer.echo(f"\n[{hit['score']:.3f}] {where}\n{hit['text'][:500]}")
+
+
+def filters(tickers: list[str] | None, year: int | None, item: str | None) -> dict | None:
+    """Pinecone metadata filter from the search options."""
+    conditions = []
+    if tickers:
+        conditions.append({"ticker": {"$in": [t.upper() for t in tickers]}})
+    if year:
+        conditions.append({"fiscal_year": {"$eq": year}})
+    if item:
+        conditions.append({"item": {"$eq": item.upper()}})
+    if not conditions:
+        return None
+    return conditions[0] if len(conditions) == 1 else {"$and": conditions}
 
 
 if __name__ == "__main__":

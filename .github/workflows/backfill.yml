@@ -1,38 +1,35 @@
 name: backfill
 
-# The first load: run the ingest Lambda until every filing is in. Each run is
-# capped to fit in Lambda's 15 minutes, so this loops until nothing is left.
+# The first load, or a rebuild after the chunker changes: run each Lambda until
+# it reports nothing left. Fetching is quick; embedding takes most of the time.
 on:
   workflow_dispatch:
+    inputs:
+      ingest:
+        description: Fetch new filings first
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: backfill
+  cancel-in-progress: false
+
 jobs:
   backfill:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 240
     steps:
+      - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
-      - name: Ingest until done
-        run: |
-          for round in 1 2 3 4 5 6; do
-            aws lambda invoke --function-name footnote-ingest --payload '{"max_new":40}' \
-              --cli-binary-format raw-in-base64-out --cli-read-timeout 900 out.json > /dev/null
-            python3 - <<'PY'
-          import json, sys
-          r = json.load(open("out.json"))
-          if "errorMessage" in r:
-              sys.exit(f"Lambda failed: {r['errorMessage']}")
-          print(f"added {r['added_count']}, already had {r['skipped']}, failed {len(r['failed'])}, left {r['remaining']}")
-          for k, v in r.get("missing_sections", {}).items():
-              print(f"  sections not found in {k}: {', '.join(v)}")
-          open("remaining", "w").write(str(r["remaining"]))
-          PY
-            [ "$(cat remaining)" = "0" ] && exit 0
-          done
-          echo "::warning::Still filings left after 6 rounds; the daily run will finish them."
+      - name: Fetch filings until done
+        if: inputs.ingest
+        run: scripts/invoke_until_done.sh footnote-ingest '{"max_new":40}' 6
+      - name: Embed passages until done
+        run: scripts/invoke_until_done.sh footnote-index '{"budget_s":720}' 16

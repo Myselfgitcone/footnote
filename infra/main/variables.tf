@@ -25,3 +25,9 @@ variable "monthly_budget_usd" {
   type    = string
   default = "1"
 }
+
+variable "pinecone_api_key" {
+  type        = string
+  description = "From the PINECONE_API_KEY repository secret. Ends up in the Lambda's environment and in Terraform state, both encrypted."
+  sensitive   = true
+}
