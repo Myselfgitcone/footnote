@@ -8,7 +8,7 @@ terraform {
   }
   backend "s3" {
     key          = "footnote/main.tfstate"
-    region       = "us-east-1"
+    region       = "us-east-2"
     encrypt      = true
     use_lockfile = true # S3-native state locking; no DynamoDB table needed
     # bucket comes from -backend-config, since it includes the account id

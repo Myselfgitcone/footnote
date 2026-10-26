@@ -1,7 +1,8 @@
 name: deploy
 
 # Apply infra/main and ship the ingest Lambda. Needs the one-time bootstrap
-# (infra/bootstrap) and two repository variables: AWS_ROLE_ARN, TF_STATE_BUCKET.
+# (infra/bootstrap), the deploy user's key as secrets AWS_ACCESS_KEY_ID and
+# AWS_SECRET_ACCESS_KEY, and the repository variable TF_STATE_BUCKET.
 on:
   push:
     branches: [main]
@@ -9,7 +10,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write # for the AWS OIDC login
   contents: read
 
 concurrency:
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: vars.AWS_ROLE_ARN != ''
+    if: vars.TF_STATE_BUCKET != ''
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -27,8 +27,9 @@ jobs:
           python-version: "3.12"
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.10"

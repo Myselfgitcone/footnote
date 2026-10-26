@@ -48,27 +48,34 @@ Goldman Sachs and Walmart and fails if any is missing its risk factors or MD&A.
 (versioned, encrypted, private), the ingest Lambda, a daily 7:30am Chicago-time
 schedule, and a $1 monthly budget alarm.
 
-GitHub Actions logs in to AWS with OIDC: no AWS keys are stored anywhere. The
-role it assumes can only manage resources named `footnote-*`, and only `main`
-can deploy.
+GitHub Actions deploys as `footnote-deploy`, an IAM user that can only manage
+resources named `footnote-*`. GitHub OIDC would avoid a stored key, but accounts
+made with AWS's new sign-up live in an organization whose service control policy
+denies `iam:*Provider*` on every plan, so the OIDC provider can't be created. The
+key is created by hand in the console, never by Terraform, so it isn't in state,
+and it can be rotated at any time.
+
+Everything runs in `us-east-2` (Ohio): projects made with AWS's new sign-up are
+limited to one region until advanced features are activated.
 
 ### One-time setup
 
-`infra/bootstrap` creates the Terraform state bucket and that OIDC role. Run it
-once from your machine with an AWS admin login:
+`infra/bootstrap` creates the Terraform state bucket and the deploy user. Run it
+once with an admin login; AWS CloudShell has everything but Terraform:
 
 ```bash
-aws configure                     # or aws sso login
-cd infra/bootstrap
-terraform init && terraform apply
+curl -sSLo tf.zip https://releases.hashicorp.com/terraform/1.10.5/terraform_1.10.5_linux_amd64.zip
+unzip -o tf.zip -d ~/bin
+git clone https://github.com/Myselfgitcone/footnote && cd footnote/infra/bootstrap
+~/bin/terraform init && ~/bin/terraform apply
 ```
 
-Then give the repository the two outputs as variables (not secrets; neither is
-sensitive):
+Then, in the IAM console, create an access key for `footnote-deploy` and store it
+in the repository as secrets `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, plus
+the state bucket as a variable:
 
 ```bash
-gh variable set AWS_ROLE_ARN --body "$(terraform output -raw deploy_role_arn)"
-gh variable set TF_STATE_BUCKET --body "$(terraform output -raw state_bucket)"
+gh variable set TF_STATE_BUCKET --body footnote-tfstate-<account id>
 ```
 
 The next merge deploys. Run the `backfill` workflow once to load the history.
