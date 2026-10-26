@@ -163,11 +163,12 @@ def test_lambda_handler_fetches_the_model_once_and_indexes_from_the_bucket(monke
         put_json(store, "clean/filings/AAPL/a-24.json", filing("AAPL", "a-24"))
         put_json(store, CATALOG, [{"ticker": "AAPL", "accession": "a-24"}])
 
-        first = handler.index_handler({"budget_s": 60})
+        first = handler.index_handler({"budget_s": 60, "run_id": "r1"})
         again = handler.index_handler({})
         assert first["indexed_count"] == 1 and first["remaining"] == 0 and "1 indexed" in first["summary"]
         assert again["indexed_count"] == 0 and again["skipped"] == 1
         assert store.exists("index/filings/AAPL/a-24.json")
+        assert json.loads(store.get("runs/footnote-index/r1.json"))["indexed_count"] == 1
     assert fetched == ["/tmp/model"]  # a warm container reuses the loaded model
     assert made[0] == ("pc-test", 384, "10k")
     assert shared.records
