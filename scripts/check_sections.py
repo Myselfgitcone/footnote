@@ -22,6 +22,10 @@ for entry in catalog:
     missing = [k for k in REQUIRED if k not in parts or len(parts[k]["text"]) < 5_000]
     if missing:
         problems.append(f"{entry['ticker']} FY{entry['fiscal_year']}: {', '.join(missing)}")
+    # Short items that come back huge have run into something else.
+    bloated = [k for k in ("3", "1C", "7A") if k in parts and len(parts[k]["text"]) > 100_000]
+    if bloated:
+        problems.append(f"{entry['ticker']} FY{entry['fiscal_year']}: {', '.join(bloated)} too long")
 if problems:
-    sys.exit("Missing or too short: " + "; ".join(problems))
+    sys.exit("Sections look wrong: " + "; ".join(problems))
 print(f"{len(catalog)} filings, all with risk factors and MD&A.")

@@ -27,7 +27,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: ./scripts/build_lambda.sh
-      - run: cd build/lambda && python -I -c "import sys; sys.path.insert(0, '.'); import footnote.handler"
+      # Lambda runs Python 3.12, and the package has compiled parts built for it.
+      - run: cd build/lambda && uv run --no-project --python 3.12 python -I -c "import sys; sys.path.insert(0, '.'); import footnote.handler"
 
   terraform:
     runs-on: ubuntu-latest

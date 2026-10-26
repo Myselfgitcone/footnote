@@ -37,6 +37,9 @@ KEEP = tuple(TITLES)
 HEADING = re.compile(r"^\s*item\s*(\d{1,2}[a-c]?)\s*(?:[.:\-\u2013\u2014]|\s|$)", re.IGNORECASE)
 PAGE_FURNITURE = re.compile(r"^\s*(\d{1,3}|[ivxlc]{1,6}|table of contents|index)\s*$", re.IGNORECASE)
 MIN_SECTION_CHARS = 400
+# A section found only by its title that runs longer than this has run past the
+# narrative into the financial statements; better to report it missing.
+MAX_TITLE_SECTION_CHARS = 250_000
 MAX_HEADING_CHARS = 160
 
 
@@ -55,7 +58,9 @@ TITLE_PATTERNS = {
     "1": r"business|description of business",
     "1A": r"risk factors",
     "1C": r"cybersecurity",
-    "3": r"legal proceedings|litigation",
+    # Only the standard title: banks' Item 3 points to a "Litigation" note in the
+    # financial statements, and matching that ran to the end of JPMorgan's 10-K.
+    "3": r"legal proceedings",
     "7": r"management.s discussion and analysis(?: of financial condition and results of operations)?",
     "7A": r"quantitative and qualitative disclosures? about market risk",
     # boundaries only
@@ -160,6 +165,8 @@ def _by_title(lines: list[str], offsets: list[int], items: list[str]) -> dict[st
                 continue
             end = next((i for i, other in titled if i > index and other != item), len(lines))
             length = offsets[end] - offsets[index + 1]
+            if length > MAX_TITLE_SECTION_CHARS:
+                continue
             if best is None or length > best[0]:
                 best = (length, index, end)
         if best and best[0] >= MIN_SECTION_CHARS:

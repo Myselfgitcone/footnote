@@ -98,3 +98,22 @@ def test_annual_report_style_filings_are_split_by_title():
 def test_too_short_to_be_a_section_is_ignored():
     html = "<p>Item 1A. Risk Factors</p><p>See page 10.</p><p>Item 1B. Unresolved Staff Comments</p>"
     assert sections.split(html) == {}
+
+
+def test_a_litigation_note_in_the_financials_is_not_legal_proceedings():
+    """JPMorgan's Item 3 just points to its Litigation note; that note isn't the section."""
+    html = f"""
+    <p>Item 1A. Risk Factors</p><p>Risks. {FILLER}</p>
+    <p>Item 3. Legal Proceedings</p><p>For a description of legal proceedings, see Note 30.</p>
+    <p>Item 7. Management's Discussion and Analysis</p><p>Results. {FILLER}</p>
+    <p>Item 8. Financial Statements</p>
+    <p>Note 30</p><h3>Litigation</h3><p>{FILLER * 40}</p>
+    <h3>Commitments and guarantees</h3><p>{FILLER}</p>
+    """
+    found = sections.split(html)
+    assert set(found) == {"1A", "7"}  # Item 3 is a one-line pointer: missing, not 500k chars of notes
+
+
+def test_a_title_match_that_runs_too_long_is_dropped():
+    html = f"<h2>Risk Factors</h2><p>{'Words about risk. ' * 20_000}</p>"
+    assert sections.split(html) == {}
