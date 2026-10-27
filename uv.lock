@@ -483,6 +483,7 @@ dev = [
     { name = "moto", extra = ["s3"] },
     { name = "onnx" },
     { name = "pytest" },
+    { name = "pyyaml" },
     { name = "ruff" },
     { name = "uvicorn" },
 ]
@@ -511,6 +512,7 @@ dev = [
     { name = "moto", extras = ["s3"], specifier = ">=5.0" },
     { name = "onnx", specifier = ">=1.17" },
     { name = "pytest", specifier = ">=8.3" },
+    { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.8" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]

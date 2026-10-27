@@ -156,7 +156,12 @@ def build_graph(planner: Planner, writer: Writer, embedder, vectors: Vectors, fi
         found = []
         for ticker in p.tickers:
             years = figures_for(ticker).get("years", {})
-            wanted = [str(y) for y in p.fiscal_years if str(y) in years] or sorted(years)[-2:]
+            # Asked for years: only those. Asked for none: the latest two, for context.
+            # A year Footnote doesn't have gets nothing, never a neighbouring year's figure.
+            if p.fiscal_years:
+                wanted = [str(y) for y in p.fiscal_years if str(y) in years]
+            else:
+                wanted = sorted(years)[-2:]
             for year in wanted:
                 figures = years[year]["figures"]
                 for name in p.metrics:

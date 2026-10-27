@@ -114,6 +114,45 @@ def ask(question: str, s3: bool = typer.Option(False, help="Read figures from th
             )
 
 
+@app.command()
+def evals(
+    s3: bool = typer.Option(False, help="Read figures and filings from the S3 bucket."),
+    only: list[str] = typer.Option(None, help="Run only these case ids."),
+    judge: bool = typer.Option(True, help="Have a second model check that answers are grounded."),
+) -> None:
+    """Score answers to the questions in evals/cases.yaml; fail if any score is below its gate."""
+    import os
+
+    from langchain_core.tracers.langchain import wait_for_all_tracers
+
+    from footnote import evals as ev
+    from footnote.service import asker
+
+    settings = Settings()
+    store = S3Store(settings.bucket) if s3 else LocalStore(settings.local_dir)
+    cases = [c for c in ev.load_cases() if not only or c["id"] in only]
+    broken = ev.check_cases_against_corpus(cases, store)
+    graph = asker(settings, store, settings.model_dir)
+    judging = ev.make_judge(settings.anthropic_api_key) if judge else None
+    try:
+        if os.environ.get("LANGSMITH_API_KEY"):
+            outcomes, url = ev.run_langsmith(cases, graph, judging)
+        else:
+            outcomes, url = ev.run_local(cases, graph, judging), None
+    finally:
+        wait_for_all_tracers()
+    summary = ev.summarize(outcomes)
+    text = ev.report(outcomes, summary, url, broken)
+    typer.echo(text)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as page:
+            page.write(text + "\n")
+    problems = ev.failures(summary) + broken
+    if problems:
+        typer.echo("\nEvals failed: " + "; ".join(problems), err=True)
+        raise typer.Exit(1)
+
+
 def filters(tickers: list[str] | None, year: int | None, item: str | None) -> dict | None:
     """Pinecone metadata filter from the search options."""
     conditions = []

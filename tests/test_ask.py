@@ -122,3 +122,9 @@ def test_the_plan_is_kept_to_known_companies():
 def test_planner_instructions_name_every_company_and_figure():
     text = ask.planner_instructions()
     assert "KO: Coca-Cola" in text and "eps_diluted (Diluted earnings per share)" in text
+
+
+def test_a_year_footnote_does_not_have_gets_no_figures():
+    plan = Plan(in_scope=True, tickers=["AAPL"], fiscal_years=[2015], metrics=["revenue"])
+    result, seen, *_ = run(plan, "unused")
+    assert result["answer"] == ask.NOTHING_FOUND and seen == {}

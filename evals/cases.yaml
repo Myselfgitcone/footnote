@@ -1,0 +1,183 @@
+# Questions with known answers, run against the live index by `footnote evals`.
+#
+# figure:  the answer must cite the exact figure filed in XBRL and state it.
+#          Values are from the SEC's companyfacts API, as reported in that year's
+#          10-K (so NVIDIA's EPS is pre-split in fiscal 2024, post-split in 2025).
+# passage: some retrieved passage from the company must contain the phrase (and
+#          be in one of `items`, if given), and the answer should cite one.
+# decline: out of scope, or not in the filings. The answer must not offer a
+#          dollar figure.
+#
+# Every answer that cites sources is also judged for whether its claims are
+# supported by them.
+
+- id: aapl-revenue-2024
+  kind: figure
+  question: What was Apple's revenue in fiscal 2024?
+  figures:
+    - {ticker: AAPL, fiscal_year: 2024, metric: revenue, value: 391035000000}
+
+- id: msft-net-income-2025
+  kind: figure
+  question: How much did Microsoft earn in net income in fiscal 2025?
+  figures:
+    - {ticker: MSFT, fiscal_year: 2025, metric: net_income, value: 101832000000}
+
+- id: nvda-revenue-2025
+  kind: figure
+  question: What was NVIDIA's total revenue for fiscal year 2025?
+  figures:
+    - {ticker: NVDA, fiscal_year: 2025, metric: revenue, value: 130497000000}
+
+- id: nvda-eps-split
+  kind: figure
+  question: What was NVIDIA's diluted EPS in fiscal 2024 and in fiscal 2025?
+  figures:
+    - {ticker: NVDA, fiscal_year: 2024, metric: eps_diluted, value: 11.93}
+    - {ticker: NVDA, fiscal_year: 2025, metric: eps_diluted, value: 2.94}
+
+- id: wmt-revenue-2025
+  kind: figure
+  question: What were Walmart's total revenues in fiscal 2025?
+  figures:
+    - {ticker: WMT, fiscal_year: 2025, metric: revenue, value: 680985000000}
+
+- id: jpm-net-income-2024
+  kind: figure
+  question: What was JPMorgan Chase's net income in 2024?
+  figures:
+    - {ticker: JPM, fiscal_year: 2024, metric: net_income, value: 58471000000}
+
+- id: ko-eps-2024
+  kind: figure
+  question: What were Coca-Cola's diluted earnings per share in 2024?
+  figures:
+    - {ticker: KO, fiscal_year: 2024, metric: eps_diluted, value: 2.46}
+
+- id: tsla-revenue-change
+  kind: figure
+  question: How did Tesla's revenue change from fiscal 2024 to fiscal 2025?
+  figures:
+    - {ticker: TSLA, fiscal_year: 2024, metric: revenue, value: 97690000000}
+    - {ticker: TSLA, fiscal_year: 2025, metric: revenue, value: 94827000000}
+
+- id: amzn-revenue-2024
+  kind: figure
+  question: What were Amazon's net sales in 2024?
+  figures:
+    - {ticker: AMZN, fiscal_year: 2024, metric: revenue, value: 637959000000}
+
+- id: oil-majors-2024
+  kind: figure
+  question: Compare Exxon Mobil's and Chevron's net income in fiscal 2024.
+  figures:
+    - {ticker: XOM, fiscal_year: 2024, metric: net_income, value: 33680000000}
+    - {ticker: CVX, fiscal_year: 2024, metric: net_income, value: 17661000000}
+
+- id: meta-net-income-2024
+  kind: figure
+  question: What was Meta's net income in 2024?
+  figures:
+    - {ticker: META, fiscal_year: 2024, metric: net_income, value: 62360000000}
+
+- id: dis-eps-2025
+  kind: figure
+  question: What was Disney's diluted EPS in fiscal 2025?
+  figures:
+    - {ticker: DIS, fiscal_year: 2025, metric: eps_diluted, value: 6.85}
+
+- id: cost-revenue-2025
+  kind: figure
+  question: What was Costco's total revenue in fiscal 2025?
+  figures:
+    - {ticker: COST, fiscal_year: 2025, metric: revenue, value: 275235000000}
+
+- id: aapl-manufacturing
+  kind: passage
+  question: Where does Apple make its products?
+  ticker: AAPL
+  phrase: outsourcing partners
+  items: ["1", "1A"]
+
+- id: jpm-cybersecurity
+  kind: passage
+  question: How does JPMorgan manage cybersecurity risk?
+  ticker: JPM
+  phrase: cybersecurity
+  items: ["1C"]
+
+- id: ko-bottlers
+  kind: passage
+  question: How does Coca-Cola work with its bottling partners?
+  ticker: KO
+  phrase: bottling partner
+
+- id: cost-membership
+  kind: passage
+  question: How important are membership fees to Costco?
+  ticker: COST
+  phrase: membership fee
+
+- id: tsla-battery-materials
+  kind: passage
+  question: What does Tesla say about the supply of raw materials for its batteries?
+  ticker: TSLA
+  phrase: lithium
+
+- id: nvda-export-controls
+  kind: passage
+  question: How do US export controls affect NVIDIA?
+  ticker: NVDA
+  phrase: export control
+
+- id: unh-change-healthcare
+  kind: passage
+  question: What happened in the Change Healthcare cyberattack, according to UnitedHealth?
+  ticker: UNH
+  phrase: Change Healthcare
+
+- id: dis-streaming
+  kind: passage
+  question: What does Disney say about Disney+?
+  ticker: DIS
+  phrase: Disney+
+
+- id: jnj-talc
+  kind: passage
+  question: What does Johnson & Johnson say about talc litigation?
+  ticker: JNJ
+  phrase: talc
+
+- id: meta-reality-labs
+  kind: passage
+  question: What does Meta say about Reality Labs' operating losses?
+  ticker: META
+  phrase: Reality Labs
+
+- id: msft-datacenters
+  kind: passage
+  question: What does Microsoft say about its investment in datacenters?
+  ticker: MSFT
+  phrase: datacenter
+
+- id: bac-interest-rate-risk
+  kind: passage
+  question: How does Bank of America describe its interest rate risk?
+  ticker: BAC
+  phrase: interest rate risk
+
+- id: weather
+  kind: decline
+  question: What's the weather in Chicago today?
+
+- id: pepsico
+  kind: decline
+  question: What was PepsiCo's revenue in 2024?
+
+- id: poem
+  kind: decline
+  question: Write a short poem about the stock market.
+
+- id: apple-2015
+  kind: decline
+  question: What was Apple's revenue in fiscal 2015?

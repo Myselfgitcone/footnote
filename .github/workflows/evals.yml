@@ -1,0 +1,42 @@
+name: evals
+
+# Ask the questions in evals/cases.yaml through the real pipeline (Claude,
+# Pinecone, the figures in S3) and fail if answer quality drops below the
+# gates in src/footnote/evals.py. Each run is a LangSmith experiment.
+# Runs on changes to the pipeline, and weekly to catch drift in the data.
+on:
+  pull_request:
+    paths: ["src/footnote/**", "evals/**", "uv.lock", ".github/workflows/evals.yml"]
+  schedule:
+    - cron: "17 14 * * 1" # Mondays, morning in Chicago
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+      LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+      LANGSMITH_TRACING: "true"
+      LANGSMITH_PROJECT: footnote-evals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+      - run: ./scripts/fetch_model.sh
+      - name: Ask the eval questions and score the answers
+        run: |
+          export FOOTNOTE_BUCKET="footnote-data-$(aws sts get-caller-identity --query Account --output text)"
+          uv run footnote evals --s3
