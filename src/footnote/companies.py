@@ -12,6 +12,10 @@ class Company:
     ticker: str
     sector: str
     name: str  # what people call it; the SEC's legal name comes with each filing
+    # Earlier SEC registrants whose filings are this company's history. When a
+    # company reorganizes under a new parent, the ticker moves to the parent's
+    # CIK, but every 10-K until then was filed under the old one.
+    predecessor_ciks: tuple[int, ...] = ()
 
 
 COMPANIES = (
@@ -31,7 +35,14 @@ COMPANIES = (
     Company("JNJ", "Healthcare", "Johnson & Johnson"),
     Company("UNH", "Healthcare", "UnitedHealth Group"),
     Company("PFE", "Healthcare", "Pfizer"),
-    Company("XOM", "Energy", "Exxon Mobil"),
+    Company(
+        "XOM",
+        "Energy",
+        "Exxon Mobil",
+        # ExxonMobil Holdings Corp became the successor issuer in July 2026 (form 8-K12B);
+        # Exxon Mobil Corp filed every 10-K before that.
+        predecessor_ciks=(34088,),
+    ),
     Company("CVX", "Energy", "Chevron"),
     Company("KO", "Consumer", "Coca-Cola"),
     Company("DIS", "Communication", "Walt Disney"),
@@ -39,3 +50,4 @@ COMPANIES = (
 
 TICKERS = tuple(c.ticker for c in COMPANIES)
 NAMES = {c.ticker: c.name for c in COMPANIES}
+PREDECESSORS = {c.ticker: c.predecessor_ciks for c in COMPANIES}

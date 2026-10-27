@@ -21,6 +21,8 @@ from footnote.store import LocalStore, S3Store, Store, get_json, put_json
 log = logging.getLogger("footnote.api")
 app = FastAPI(title="Footnote", description="Answers about SEC 10-K filings that cite their source.")
 _state: dict = {}
+# Part of every cache key: bump it to retire cached answers after the data or the prompts change.
+CACHE_VERSION = "2"
 
 
 class Question(BaseModel):
@@ -36,7 +38,8 @@ def health() -> dict:
 def ask_question(body: Question) -> dict:
     settings, store = _settings(), _store()
     question = " ".join(body.question.split())
-    cache_key = f"ask/cache/{hashlib.sha256(question.lower().encode()).hexdigest()[:32]}.json"
+    digest = hashlib.sha256(f"{CACHE_VERSION}:{question.lower()}".encode()).hexdigest()[:32]
+    cache_key = f"ask/cache/{digest}.json"
     cached = get_json(store, cache_key)
     if cached and time.time() - cached["answered_at"] < 24 * 3600:
         return cached | {"cached": True}
@@ -64,7 +67,9 @@ def ask_question(body: Question) -> dict:
         "answered_at": time.time(),
     }
     put_json(store, usage_key, {"count": used + 1})  # close enough under light, rare concurrency
-    put_json(store, cache_key, response)
+    if response["sources"]:
+        # An answer that found nothing may be a gap in the data that gets fixed; don't hold on to it.
+        put_json(store, cache_key, response)
     return response | {"cached": False}
 
 

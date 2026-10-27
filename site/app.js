@@ -86,7 +86,10 @@ function show(body) {
 
   const list = $("sources");
   list.replaceChildren(...body.sources.map(sourceItem));
-  if (!body.sources.length) list.append(el("li", {}, el("span"), el("p", { class: "small" }, "No sources: the question was outside what the filings cover.")));
+  if (!body.sources.length) {
+    const why = plan.in_scope === false ? "the question is outside what these filings cover." : "nothing in the filings matched.";
+    list.append(el("li", {}, el("span"), el("p", { class: "small" }, "No sources: " + why)));
+  }
   $("result").classList.remove("hidden");
 }
 

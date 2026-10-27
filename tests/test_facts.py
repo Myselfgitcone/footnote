@@ -95,3 +95,62 @@ def test_a_rerun_fills_in_figures_that_are_missing(tmp_path):
     (tmp_path / facts.facts_key("AAPL")).unlink()
     ingest.run(FakeEdgar(FILINGS), store, ["AAPL"])  # nothing new to fetch
     assert store.exists(facts.facts_key("AAPL"))
+
+
+def test_a_company_that_reorganized_keeps_its_history(tmp_path, monkeypatch):
+    """Exxon: the ticker now belongs to a new holding company with no 10-Ks yet;
+    every 10-K so far was filed by Exxon Mobil Corp, its predecessor."""
+    from footnote.edgar import Filing
+
+    old = Filing("XOM", 34088, "EXXON MOBIL CORP", "10-K", "x-24", "2025-02-19", "2024-12-31", "xom.htm")
+
+    class Reorganized(FakeEdgar):
+        def ciks(self, tickers):
+            return {"XOM": (2115436, "ExxonMobil Holdings Corp")}
+
+        def filings(self, ticker, cik, forms, since_year):
+            return [old] if cik == 34088 else []
+
+        def company_facts(self, cik):
+            assert cik == 34088
+            gaap = {
+                "NetIncomeLoss": {
+                    "label": "Net income",
+                    "units": {"USD": [entry(33_680_000_000, "x-24", "2024-12-31", "2024-01-01")]},
+                }
+            }
+            return json.dumps({"facts": {"us-gaap": gaap}}).encode()
+
+    monkeypatch.setattr(ingest, "PREDECESSORS", {"XOM": (34088,)})
+    store = LocalStore(tmp_path)
+    report = ingest.run(Reorganized([]), store, ["XOM"])
+    assert report.added == ["x-24"] and report.no_filings == []
+    assert store.exists("raw/edgar/XOM/companyfacts-34088.json")
+    built = json.loads(store.get(facts.facts_key("XOM")))
+    assert built["years"]["2024"]["figures"]["net_income"]["value"] == 33_680_000_000
+
+
+def test_a_company_with_no_filings_is_reported(tmp_path):
+    class Nothing(FakeEdgar):
+        def filings(self, ticker, cik, forms, since_year):
+            return []
+
+    report = ingest.run(Nothing([]), LocalStore(tmp_path), ["XOM", "CVX"])
+    assert report.no_filings == ["XOM", "CVX"]
+    assert "No filings found for: XOM, CVX" in str(report)
+
+
+def test_figures_reader_does_not_remember_a_missing_file(tmp_path):
+    from footnote.service import figures_reader
+    from footnote.store import put_json
+
+    store = LocalStore(tmp_path)
+    now = [0.0]
+    read = figures_reader(store, clock=lambda: now[0])
+    assert read("XOM") == {}
+    put_json(store, facts.facts_key("XOM"), {"years": {"2024": {}}})
+    assert read("XOM") == {"years": {"2024": {}}}  # written later, picked up
+    put_json(store, facts.facts_key("XOM"), {"years": {"2025": {}}})
+    assert read("XOM") == {"years": {"2024": {}}}  # held for an hour
+    now[0] = 3601
+    assert read("XOM") == {"years": {"2025": {}}}

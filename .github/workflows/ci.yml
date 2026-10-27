@@ -54,7 +54,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --frozen
       - name: Fetch and split real filings
-        run: uv run footnote ingest --ticker AAPL --ticker JPM --ticker GS --ticker WMT --since-year 2024
+        run: uv run footnote ingest --ticker AAPL --ticker JPM --ticker GS --ticker WMT --ticker XOM --since-year 2024
       - name: Every filing has risk factors and MD&A
         run: uv run python scripts/check_sections.py out/store
       - name: How they cut into passages
