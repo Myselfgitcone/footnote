@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from footnote import sections
+from footnote import facts, sections
 from footnote.edgar import Edgar, Filing
 from footnote.store import Store, get_json, put_json
 
@@ -95,6 +95,10 @@ def run(
         if new:
             # The company's XBRL facts change with every filing; refresh them alongside.
             store.put(f"raw/edgar/{ticker}/companyfacts.json", edgar.company_facts(cik), "application/json")
+        if new or not store.exists(facts.facts_key(ticker)):
+            mine = [e for e in catalog.values() if e["ticker"] == ticker]
+            if mine and store.exists(f"raw/edgar/{ticker}/companyfacts.json"):
+                facts.write(store, ticker, mine)
 
     put_json(store, CATALOG, sorted(catalog.values(), key=lambda e: (e["ticker"], e["period"])))
     report.seconds = clock() - started

@@ -87,6 +87,33 @@ def search(
         typer.echo(f"\n[{hit['score']:.3f}] {where}\n{hit['text'][:500]}")
 
 
+@app.command()
+def ask(question: str, s3: bool = typer.Option(False, help="Read figures from the S3 bucket.")) -> None:
+    """Answer a question from the filings, with the sources it cites."""
+    from footnote.service import asker
+
+    settings = Settings()
+    store = S3Store(settings.bucket) if s3 else LocalStore(settings.local_dir)
+    try:
+        result = asker(settings, store, settings.model_dir).invoke({"question": question})
+    finally:
+        from langchain_core.tracers.langchain import wait_for_all_tracers
+
+        wait_for_all_tracers()
+    plan = result["plan"]
+    typer.echo(f"plan: {plan.model_dump_json(exclude_defaults=True)}\n")
+    typer.echo(result["answer"] + "\n")
+    for source in result["sources"]:
+        if source["kind"] == "figure":
+            where = f"{source['ticker']} FY{source['fiscal_year']}"
+            typer.echo(f"[{source['id']}] {where} {source['label']}: {source['text']}")
+        else:
+            typer.echo(
+                f"[{source['id']}] {source['ticker']} FY{source['fiscal_year']} Item {source['item']}: "
+                f"{source['text'][:200]}"
+            )
+
+
 def filters(tickers: list[str] | None, year: int | None, item: str | None) -> dict | None:
     """Pinecone metadata filter from the search options."""
     conditions = []

@@ -1,10 +1,11 @@
-# Footnote's AWS side: a bucket for filings, the ingest and index Lambdas,
-# their daily schedules, and a budget alarm. Applied by GitHub Actions on every merge.
+# Footnote's AWS side: a bucket for filings, the ingest and index Lambdas and
+# their daily schedules, the question-answering API, and a budget alarm.
+# Applied by GitHub Actions on every merge.
 
 terraform {
   required_version = ">= 1.10"
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.90" }
+    aws = { source = "hashicorp/aws", version = "~> 6.20" }
   }
   backend "s3" {
     key          = "footnote/main.tfstate"
@@ -69,6 +70,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
     status = "Enabled"
     filter { prefix = "runs/" }
     expiration { days = 30 }
+  }
+  rule {
+    id     = "expire-cached-answers"
+    status = "Enabled"
+    filter { prefix = "ask/" }
+    expiration { days = 7 }
   }
 }
 
@@ -214,6 +221,106 @@ resource "aws_lambda_function" "index" {
     }
   }
   depends_on = [aws_cloudwatch_log_group.index, aws_iam_role_policy.index]
+}
+
+# ---------------------------------------------------------------- ask API
+
+resource "aws_iam_role" "ask" {
+  name               = "footnote-ask"
+  assume_role_policy = data.aws_iam_policy_document.lambda_trust.json
+}
+
+data "aws_iam_policy_document" "ask" {
+  statement {
+    actions = ["s3:GetObject"]
+    resources = [
+      "${aws_s3_bucket.data.arn}/models/*",
+      "${aws_s3_bucket.data.arn}/clean/facts/*",
+      "${aws_s3_bucket.data.arn}/ask/*",
+    ]
+  }
+  statement {
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.data.arn}/ask/*"]
+  }
+  statement {
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.data.arn]
+  }
+  statement {
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.ask.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ask" {
+  name   = "footnote-ask"
+  role   = aws_iam_role.ask.id
+  policy = data.aws_iam_policy_document.ask.json
+}
+
+resource "aws_cloudwatch_log_group" "ask" {
+  name              = "/aws/lambda/footnote-ask"
+  retention_in_days = 14
+}
+
+resource "aws_lambda_function" "ask" {
+  function_name     = "footnote-ask"
+  role              = aws_iam_role.ask.arn
+  runtime           = "python3.12"
+  architectures     = ["x86_64"]
+  handler           = "footnote.api.handler"
+  s3_bucket         = aws_s3_object.code.bucket
+  s3_key            = aws_s3_object.code.key
+  s3_object_version = aws_s3_object.code.version_id
+  source_code_hash  = filebase64sha256(var.lambda_zip)
+  timeout           = 60
+  memory_size       = 2048
+  ephemeral_storage {
+    size = 1024 # the model is copied to /tmp
+  }
+  environment {
+    variables = {
+      FOOTNOTE_BUCKET   = aws_s3_bucket.data.bucket
+      PINECONE_API_KEY  = var.pinecone_api_key
+      ANTHROPIC_API_KEY = var.anthropic_api_key
+      LANGSMITH_API_KEY = var.langsmith_api_key
+      LANGSMITH_TRACING = var.langsmith_api_key == "" ? "false" : "true"
+      LANGSMITH_PROJECT = "footnote"
+    }
+  }
+  depends_on = [aws_cloudwatch_log_group.ask, aws_iam_role_policy.ask]
+}
+
+# A public HTTPS endpoint for the web page. Answers cost money, so the API caps
+# new questions per day and caches answers.
+resource "aws_lambda_function_url" "ask" {
+  function_name      = aws_lambda_function.ask.function_name
+  authorization_type = "NONE"
+  cors {
+    allow_origins = var.allowed_origins
+    allow_methods = ["GET", "POST"]
+    allow_headers = ["content-type"]
+    max_age       = 3600
+  }
+}
+
+# Since October 2025 a public function URL needs both of these: one for the URL,
+# one for the function, limited to calls that come through the URL.
+resource "aws_lambda_permission" "ask_url" {
+  statement_id           = "PublicFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.ask.function_name
+  principal              = "*"
+  function_url_auth_type = "NONE"
+}
+
+resource "aws_lambda_permission" "ask_invoke" {
+  statement_id             = "PublicInvokeThroughUrl"
+  action                   = "lambda:InvokeFunction"
+  function_name            = aws_lambda_function.ask.function_name
+  principal                = "*"
+  invoked_via_function_url = true
 }
 
 # Runs are started without waiting and report through runs/ in the bucket. A

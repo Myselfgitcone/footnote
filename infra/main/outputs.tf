@@ -9,3 +9,7 @@ output "ingest_function" {
 output "index_function" {
   value = aws_lambda_function.index.function_name
 }
+
+output "ask_url" {
+  value = aws_lambda_function_url.ask.function_url
+}

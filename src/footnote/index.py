@@ -76,6 +76,14 @@ def run(
     budget_s: float = 600,
     clock=time.monotonic,
 ) -> IndexReport:
+    """Index what's missing, finishing within `budget_s`.
+
+    A filing is only started if it's expected to finish in time, judged by its
+    passage count and how fast this run has been embedding. A Lambda stopped
+    at its 15-minute limit can't report anything, so it's better to leave a big
+    filing for the next run. The first filing of a run always starts, so every
+    run makes progress.
+    """
     started = clock()
     report = IndexReport()
     stamp = f"chunker-{CHUNKER_VERSION}/{embedder.name}"
@@ -87,20 +95,29 @@ def run(
         if marker and marker.get("stamp") == stamp:
             report.skipped += 1
             continue
-        if clock() - started > budget_s:
-            report.remaining += 1
-            continue
         try:
-            _index_one(store, embedder, vectors, entry, stamp, report, clock)
+            filing = get_json(store, f"clean/filings/{entry['ticker']}/{entry['accession']}.json")
+            chunks = chunk_filing(filing)
+            if report.indexed and clock() - started + _expected_seconds(len(chunks), report) > budget_s:
+                report.remaining += 1
+                continue
+            _index_one(embedder, vectors, store, entry, filing, chunks, stamp, report, clock)
         except Exception as error:  # one bad filing shouldn't stop the rest
             report.failed[entry["accession"]] = f"{type(error).__name__}: {error}"[:300]
     report.seconds = clock() - started
     return report
 
 
-def _index_one(store, embedder, vectors, entry, stamp, report, clock) -> None:
-    filing = get_json(store, f"clean/filings/{entry['ticker']}/{entry['accession']}.json")
-    chunks = chunk_filing(filing)
+FIRST_GUESS_S_PER_PASSAGE = 0.25  # bge-small on a 2-vCPU Lambda, before this run has measured
+PER_FILING_S = 10  # reading it, Pinecone writes, the marker
+
+
+def _expected_seconds(passages: int, report: IndexReport) -> float:
+    rate = report.embed_seconds / report.chunks if report.chunks else FIRST_GUESS_S_PER_PASSAGE
+    return passages * rate * 1.2 + PER_FILING_S
+
+
+def _index_one(embedder, vectors, store, entry, filing, chunks, stamp, report, clock) -> None:
     began = clock()
     values = embedder.documents([c.for_embedding for c in chunks])
     report.embed_seconds += clock() - began

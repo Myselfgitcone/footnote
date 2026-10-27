@@ -24,3 +24,11 @@ class Settings(BaseSettings):
     # Where the embedding model is on disk: fetched by scripts/fetch_model.sh locally,
     # copied from the bucket into /tmp in Lambda.
     model_dir: str = "build/model"
+
+    # Answers. Claude Haiku plans each question and writes the cited answer.
+    anthropic_api_key: str = Field(
+        default="", validation_alias=AliasChoices("ANTHROPIC_API_KEY", "FOOTNOTE_ANTHROPIC_API_KEY")
+    )
+    answer_model: str = "claude-haiku-5-5"
+    # A public endpoint spends real money per question; this caps a day's spend.
+    daily_question_limit: int = 300

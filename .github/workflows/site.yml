@@ -1,0 +1,47 @@
+name: site
+
+# Publish the page to GitHub Pages, pointed at the live API. Runs after every
+# deploy (the API's URL could change) and whenever the page changes.
+on:
+  workflow_run:
+    workflows: [deploy]
+    types: [completed]
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+      - name: Point the page at the API
+        run: |
+          url=$(aws lambda get-function-url-config --function-name footnote-ask --query FunctionUrl --output text)
+          echo "window.FOOTNOTE_API = \"$url\";" > site/config.js
+          cat site/config.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: pages
+        uses: actions/deploy-pages@v4

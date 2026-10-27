@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Footnote · Ask the annual reports</title>
+  <meta name="description" content="Ask about 20 companies' 10-K filings. Every claim cites the passage it came from; every figure is the one filed with the SEC.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper: #f7f4ee; --sheet: #fffdf9; --ink: #1d1b18; --muted: #6b655c; --rule: #e2dcd1;
+      --cite: #1f4fbf; --cite-soft: #e3eafb; --figure: #8a4b0f; --figure-soft: #f6e9d9; --warn: #a3321a;
+      --display: "Newsreader", Georgia, serif;
+      --body: "IBM Plex Sans", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #14130f; --sheet: #1c1a16; --ink: #ece7dd; --muted: #a39b8d; --rule: #322e27;
+        --cite: #8fb0ff; --cite-soft: #1e2a45; --figure: #f0b26a; --figure-soft: #3a2a17; --warn: #ff8a6e;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 400 16px/1.65 var(--body); -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-underline-offset: 3px; }
+    :focus-visible { outline: 2px solid var(--cite); outline-offset: 3px; border-radius: 4px; }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+    .hidden { display: none !important; }
+
+    nav { display: flex; justify-content: space-between; gap: 16px; padding: 22px 0; font-size: 14px; color: var(--muted); }
+    nav a { text-decoration: none; } nav a:hover { color: var(--ink); }
+    h1 { font: 600 clamp(40px, 7vw, 64px)/1.02 var(--display); letter-spacing: -0.02em; margin: 28px 0 12px; }
+    h1 sup { font-size: 0.38em; color: var(--cite); font-family: var(--mono); font-weight: 500; vertical-align: 1.4em; }
+    .lede { font-size: 19px; color: var(--muted); max-width: 640px; margin: 0 0 30px; }
+
+    form { display: flex; gap: 10px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 8px; box-shadow: 0 1px 0 var(--rule); }
+    input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: 400 17px var(--body); padding: 10px 12px; }
+    input:focus { outline: none; }
+    button { border: 0; border-radius: 8px; background: var(--ink); color: var(--paper); font: 600 15px var(--body); padding: 0 20px; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: progress; }
+    .examples { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+    .examples button { background: transparent; color: var(--muted); border: 1px solid var(--rule); font-weight: 400; font-size: 14px; padding: 6px 12px; border-radius: 999px; }
+    .examples button:hover { color: var(--ink); border-color: var(--muted); }
+
+    #status { margin: 34px 0 0; color: var(--muted); font-size: 15px; min-height: 1em; }
+    #status.error { color: var(--warn); }
+    .answer { margin: 30px 0 0; padding: 26px 28px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; }
+    .answer p { font: 400 20px/1.6 var(--display); margin: 0; }
+    .answer .plan { margin: 16px 0 0; font: 400 13px/1.5 var(--mono); color: var(--muted); }
+    .mark { font: 500 12px var(--mono); vertical-align: 0.5em; margin-left: 1px; padding: 1px 4px; border-radius: 4px; text-decoration: none; color: var(--cite); background: var(--cite-soft); }
+    .mark.fig { color: var(--figure); background: var(--figure-soft); }
+
+    h2 { font: 600 13px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 36px 0 12px; }
+    .sources { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+    .sources li { display: grid; grid-template-columns: 44px 1fr; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--rule); scroll-margin-top: 20px; }
+    .sources li.flash { animation: flash 1.6s ease-out; }
+    @keyframes flash { from { background: var(--cite-soft); } to { background: transparent; } }
+    .sources li > div { min-width: 0; }
+    .where, .small { overflow-wrap: anywhere; }
+    .sid { font: 500 13px var(--mono); color: var(--cite); padding-top: 2px; }
+    .sid.fig { color: var(--figure); }
+    .where { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+    .where span { font-weight: 400; color: var(--muted); }
+    .excerpt { font-size: 15px; color: var(--ink); margin: 0 0 6px; white-space: pre-line; }
+    .excerpt.clamped { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+    .value { font: 500 22px var(--mono); font-variant-numeric: tabular-nums; margin: 2px 0 4px; }
+    .small { font-size: 13px; color: var(--muted); }
+    .small button { background: none; color: var(--cite); padding: 0; font: inherit; border-radius: 0; }
+
+    .how { margin: 64px 0 40px; padding: 26px 0 0; border-top: 1px solid var(--rule); color: var(--muted); font-size: 15px; }
+    .how h2 { margin-top: 0; }
+    .how ol { padding-left: 20px; margin: 0; }
+    .how li { margin: 0 0 8px; }
+    footer { padding: 0 0 40px; font-size: 13px; color: var(--muted); }
+    @media (max-width: 560px) {
+      form { flex-direction: column; } button[type=submit] { padding: 12px; }
+      .answer { padding: 20px; } .answer p { font-size: 18px; }
+      .sources li { grid-template-columns: 34px 1fr; }
+      .value { font-size: 18px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .sources li.flash { animation: none; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav>
+      <a href="https://jagadish-butukuri.vercel.app">Jagadish Butukuri</a>
+      <a href="https://github.com/Myselfgitcone/footnote">Source on GitHub</a>
+    </nav>
+    <h1>Footnote<sup>[1]</sup></h1>
+    <p class="lede">Ask about twenty companies' annual reports. Every claim cites the passage it came from, and every figure is the one the company filed with the SEC.</p>
+
+    <form id="ask">
+      <label for="q" class="hidden">Question</label>
+      <input id="q" name="q" maxlength="300" autocomplete="off" placeholder="What are Tesla's biggest supply chain risks?" required>
+      <button type="submit" id="go">Ask</button>
+    </form>
+    <ul class="examples" id="examples"></ul>
+
+    <p id="status" role="status" aria-live="polite"></p>
+    <section id="result" class="hidden" aria-live="polite">
+      <div class="answer">
+        <p id="answer"></p>
+        <p class="plan" id="plan"></p>
+      </div>
+      <h2>Sources</h2>
+      <ol class="sources" id="sources"></ol>
+    </section>
+
+    <section class="how">
+      <h2>How it works</h2>
+      <ol>
+        <li>Each morning a Lambda fetches new 10-Ks from SEC EDGAR into S3 and splits them into sections: Business, Risk Factors, MD&amp;A, Legal Proceedings, Cybersecurity, Market Risk.</li>
+        <li>A second Lambda cuts the sections into passages, embeds them with bge-small on CPU, and stores them in Pinecone. Headline figures come from the XBRL data filed with each 10-K.</li>
+        <li>Your question goes to a LangGraph pipeline. Claude reads it and picks the companies, years, figures and what to search for. Text search and figure lookup run in parallel. Then Claude writes an answer that may cite only what was found. Every run is traced in LangSmith.</li>
+      </ol>
+      <p>Covers fiscal 2021 onward for Apple, Microsoft, Alphabet, Amazon, NVIDIA, Meta, Tesla, JPMorgan Chase, Bank of America, Goldman Sachs, Walmart, Costco, Target, Johnson &amp; Johnson, UnitedHealth, Pfizer, Exxon Mobil, Chevron, Coca-Cola and Disney. Not investment advice.</p>
+    </section>
+    <footer>Built by <a href="https://jagadish-butukuri.vercel.app">Jagadish Butukuri</a>. Data: SEC EDGAR.</footer>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import pytest
 from moto import mock_aws
 
 from footnote import index
+from footnote.chunks import chunk_filing
 from footnote.cli import filters
 from footnote.ingest import CATALOG
 from footnote.store import LocalStore, put_json
@@ -103,11 +104,41 @@ def test_a_new_chunker_version_replaces_old_vectors_without_leaving_strays(tmp_p
     assert all(i.startswith("a-24#") for i in vectors.records)
 
 
-def test_a_run_stops_starting_filings_when_its_time_is_up(tmp_path):
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+class SlowEmbedder(FakeEmbedder):
+    """Takes a second per passage on the fake clock."""
+
+    def __init__(self, clock):
+        super().__init__()
+        self.clock = clock
+
+    def documents(self, texts):
+        self.clock.now += len(texts)
+        return super().documents(texts)
+
+
+def test_a_filing_that_would_not_finish_in_time_waits_for_the_next_run(tmp_path):
     store = setup_store(tmp_path, [filing("AAPL", "a-23"), filing("AAPL", "a-24"), filing("KO", "k-24")])
-    ticks = iter(range(0, 1000, 100))
-    report = index.run(store, FakeEmbedder(), FakeVectors(), budget_s=150, clock=lambda: next(ticks))
+    passages = len(chunk_filing(FILING))
+    clock = Clock()
+    # Room for the first filing and a bit, not for a second one at a second per passage.
+    report = index.run(store, SlowEmbedder(clock), FakeVectors(), budget_s=passages * 1.5, clock=clock)
     assert len(report.indexed) == 1 and report.remaining == 2
+    assert report.chunks_per_second == pytest.approx(1.0)
+
+
+def test_the_first_filing_always_starts_so_every_run_makes_progress(tmp_path):
+    store = setup_store(tmp_path, [filing("AAPL", "a-24")])
+    clock = Clock()
+    report = index.run(store, SlowEmbedder(clock), FakeVectors(), budget_s=1, clock=clock)
+    assert report.indexed == ["a-24"]
 
 
 def test_one_broken_filing_does_not_stop_the_rest(tmp_path):
