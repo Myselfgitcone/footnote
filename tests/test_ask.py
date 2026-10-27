@@ -128,3 +128,12 @@ def test_a_year_footnote_does_not_have_gets_no_figures():
     plan = Plan(in_scope=True, tickers=["AAPL"], fiscal_years=[2015], metrics=["revenue"])
     result, seen, *_ = run(plan, "unused")
     assert result["answer"] == ask.NOTHING_FOUND and seen == {}
+
+
+def test_an_answer_cut_off_by_the_length_limit_ends_at_a_whole_sentence():
+    text = "Apple makes phones [S1]. Its 2024 filing expected capital expenditures to increase in co"
+    assert ask.whole_sentences(text) == "Apple makes phones [S1]."
+    assert (
+        ask.whole_sentences("Revenue was $391.0 billion [F1][S2]. And")
+        == "Revenue was $391.0 billion [F1][S2]."
+    )

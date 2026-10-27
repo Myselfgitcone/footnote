@@ -104,7 +104,6 @@
   question: How does JPMorgan manage cybersecurity risk?
   ticker: JPM
   phrase: cybersecurity
-  items: ["1C"]
 
 - id: ko-bottlers
   kind: passage
