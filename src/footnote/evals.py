@@ -39,6 +39,7 @@ CASES = Path(__file__).resolve().parents[2] / "evals" / "cases.yaml"
 JUDGE_MODEL = "claude-sonnet-5-5"
 # The lowest acceptable average for each score across the questions it applies to.
 GATES = {
+    "completed": 1.0,  # every question answered and scored; a crash is a failure, not a skip
     "figure_cited": 1.0,
     "figure_stated": 1.0,
     "declined": 1.0,
@@ -239,19 +240,38 @@ class Outcome:
     notes: list[str] = field(default_factory=list)
 
 
-def evaluate_case(case: dict, output: dict, judge) -> Outcome:
+# The score every question of a kind must have; without it the question wasn't really scored.
+PRIMARY = {"figure": "figure_cited", "passage": "retrieved", "decline": "declined"}
+
+
+def evaluate_case(case: dict, output: dict | None, judge, error: str | None = None) -> Outcome:
+    """Score one answer. An answer that never came back counts as failed, never as skipped."""
+    if not output or "answer" not in output:
+        return Outcome(case, output or {}, {"completed": 0.0}, [f"no answer: {error or 'the run failed'}"])
     scores = score(case, output)
     notes = []
     if judge and case["kind"] != "decline" and output["sources"]:
-        verdict = judge(case["question"], output["answer"], output["sources"])
-        scores["grounded"] = float(verdict.supported)
-        notes += [f"unsupported: {claim}" for claim in verdict.unsupported]
+        for attempt in (1, 2):
+            try:
+                verdict = judge(case["question"], output["answer"], output["sources"])
+            except Exception as failure:  # a judge that fails twice leaves `grounded` unscored, noted
+                if attempt == 2:
+                    notes.append(f"judge failed: {type(failure).__name__}: {failure}"[:300])
+                continue
+            scores["grounded"] = float(verdict.supported)
+            notes += [f"unsupported: {claim}" for claim in verdict.unsupported]
+            break
+    scores["completed"] = float(PRIMARY[case["kind"]] in scores)
     return Outcome(case, output, scores, notes)
 
 
 def run_local(cases: list[dict], graph, judge, workers: int = 4) -> list[Outcome]:
     def one(case: dict) -> Outcome:
-        return evaluate_case(case, answer_for_eval(graph, case["question"]), judge)
+        try:
+            output = answer_for_eval(graph, case["question"])
+        except Exception as failure:
+            return evaluate_case(case, None, judge, f"{type(failure).__name__}: {failure}"[:300])
+        return evaluate_case(case, output, judge)
 
     with ThreadPoolExecutor(workers) as pool:
         return list(pool.map(one, cases))
@@ -297,6 +317,12 @@ def run_langsmith(cases: list[dict], graph, judge, workers: int = 4) -> tuple[li
         results = row["evaluation_results"]["results"]
         scores = {r.key: float(r.score) for r in results if r.score is not None}
         notes = [str(r.value) for r in results if r.key == "notes" and r.value]
+        if "completed" not in scores:
+            # The pipeline or the scorer raised: LangSmith logs it, the gate must see it.
+            error = row["run"].error or next(
+                (str(r.comment) for r in results if r.comment), "the scorer failed"
+            )
+            scores, notes = {"completed": 0.0}, [*notes, f"not scored: {error}"[:300]]
         outcomes.append(Outcome(case, row["run"].outputs or {}, scores, notes))
     return outcomes, experiment.url
 
@@ -335,6 +361,8 @@ def report(outcomes: list[Outcome], summary: dict, url: str | None, broken: list
     lines += ["", "| question | kind | scores | answer |", "|---|---|---|---|"]
     for o in sorted(outcomes, key=lambda o: (min(o.scores.values(), default=1), o.case["id"])):
         shown = ", ".join(f"{k} {v:.0%}" for k, v in sorted(o.scores.items()) if v < 1) or "all pass"
+        if o.scores.get("completed") == 0:
+            shown = "**not scored**"
         answer = o.output.get("answer", "").replace("\n", " ").replace("|", "/")
         note = (" — " + "; ".join(o.notes)) if o.notes else ""
         lines.append(f"| {o.case['id']} | {o.case['kind']} | {shown} | {answer[:220]}{note[:300]} |")

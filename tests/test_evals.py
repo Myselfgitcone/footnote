@@ -82,6 +82,7 @@ def test_bad_cases_are_refused(tmp_path):
 def test_a_figure_stated_any_reasonable_way_counts(answer):
     scores = evals.score(FIGURE_CASE, output(answer, [APPLE_FIGURE]))
     assert scores == {"tickers": 1.0, "figure_cited": 1.0, "figure_stated": 1.0, "cites_claims": 1.0}
+    assert evals.evaluate_case(FIGURE_CASE, output(answer, [APPLE_FIGURE]), None).scores["completed"] == 1.0
 
 
 def test_a_wrong_or_missing_figure_fails():
@@ -171,3 +172,39 @@ def test_a_local_run_scores_judges_and_gates():
 def test_dataset_name_follows_the_cases():
     assert evals.dataset_name([FIGURE_CASE]) == evals.dataset_name([dict(FIGURE_CASE)])
     assert evals.dataset_name([FIGURE_CASE]) != evals.dataset_name([FIGURE_CASE, DECLINE_CASE])
+
+
+def test_a_question_that_crashes_fails_the_gate_instead_of_vanishing():
+    class Crashes(FakeGraph):
+        def invoke(self, state):
+            if "Weather" in state["question"]:
+                raise RuntimeError("Pinecone timed out")
+            return super().invoke(state)
+
+    outcomes = evals.run_local([FIGURE_CASE, DECLINE_CASE], Crashes(), None)
+    crashed = next(o for o in outcomes if o.case["id"] == "weather")
+    assert crashed.scores == {"completed": 0.0}
+    assert crashed.notes == ["no answer: RuntimeError: Pinecone timed out"]
+    summary = evals.summarize(outcomes)
+    assert "completed 50% < 100%" in evals.failures(summary)
+    assert "| weather | decline | **not scored** |" in evals.report(outcomes, summary, None, [])
+
+
+def test_a_judge_that_fails_once_is_retried_and_twice_is_noted():
+    calls = []
+
+    def flaky(question, answer, sources):
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("bad tool output")
+        return evals.Judgement(supported=True)
+
+    out = output("Apple's fiscal 2024 revenue was $391,035 million [F1].", [APPLE_FIGURE])
+    assert evals.evaluate_case(FIGURE_CASE, out, flaky).scores["grounded"] == 1.0
+
+    def broken(question, answer, sources):
+        raise ValueError("bad tool output")
+
+    outcome = evals.evaluate_case(FIGURE_CASE, out, broken)
+    assert "grounded" not in outcome.scores and outcome.scores["completed"] == 1.0
+    assert outcome.notes == ["judge failed: ValueError: bad tool output"]
