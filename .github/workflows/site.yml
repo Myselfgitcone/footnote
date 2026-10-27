@@ -1,11 +1,15 @@
 name: site
 
-# Publish the page to GitHub Pages, pointed at the live API. Runs after every
-# deploy (the API's URL could change) and whenever the page changes.
+# Publish the page to GitHub Pages, pointed at the live API, with status.json:
+# what Footnote covers right now, read by the page and the portfolio hub. Runs
+# after every deploy, whenever the page changes, and every morning after the
+# day's filings are fetched (7:30) and embedded (8:15, Chicago time).
 on:
   workflow_run:
     workflows: [deploy]
     types: [completed]
+  schedule:
+    - cron: "41 14 * * *"
   push:
     branches: [main]
     paths: ["site/**", ".github/workflows/site.yml"]
@@ -39,6 +43,13 @@ jobs:
           url=$(aws lambda get-function-url-config --function-name footnote-ask --query FunctionUrl --output text)
           echo "window.FOOTNOTE_API = \"$url\";" > site/config.js
           cat site/config.js
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Write what Footnote covers right now
+        run: |
+          bucket="footnote-data-$(aws sts get-caller-identity --query Account --output text)"
+          uv run --frozen python scripts/status.py "$bucket" site/status.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
