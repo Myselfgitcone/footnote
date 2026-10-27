@@ -5,7 +5,7 @@ their source, with the numbers checked against the SEC's own figures.
 
 Ask it something: **https://myselfgitcone.github.io/footnote/**
 
-Work in progress. Done so far: getting the filings, searching them, and answering questions.
+Work in progress. Done so far: getting the filings, searching them, answering questions, and measuring the answers.
 
 ## Getting the filings
 
@@ -123,6 +123,37 @@ declined.
 ```bash
 uv run footnote ask "How did Walmart's net income change over the last two years?" --s3
 ```
+
+## Measuring the answers
+
+`evals/cases.yaml` holds about thirty questions with known answers, and
+`footnote evals` runs them through the live pipeline. There are three kinds:
+
+- **Figures.** The answer has to cite the exact figure from the SEC's XBRL data
+  and state it. The expected values were taken from the SEC's API, not from
+  Footnote. Some are traps: NVIDIA's diluted EPS was $11.93 in fiscal 2024 and
+  $2.94 in fiscal 2025 because of a stock split, and Walmart's total revenues
+  are not its net sales.
+- **Passages.** A passage from the right company containing a known phrase has
+  to be retrieved ("outsourcing partners" for where Apple makes its products),
+  and the answer should cite it. Before a passage miss counts against search,
+  the runner checks that the phrase is actually in that company's filings, so
+  a bad case is reported as a bad case.
+- **Declines.** Off-topic questions, companies Footnote doesn't cover, and
+  years it doesn't have must not get a dollar figure.
+
+Every answer that cites sources also goes to a judge: a stronger Claude than the
+one answering, so the model isn't grading itself. The judge checks that each
+claim is supported by the sources it cites. The share of sentences that carry a
+citation is counted too.
+
+Each run is a LangSmith experiment on a dataset named after the contents of
+`cases.yaml`, so runs can be compared side by side. The same scores gate the
+build: the `evals` workflow fails if any average drops below its floor in
+`GATES` (every figure exact, every decline clean, retrieval at least 80%,
+grounded at least 90%). It runs on every pull request that touches the
+pipeline, and weekly, because the filings change even when the code doesn't.
+The summary table appears on the workflow run's page.
 
 ## AWS, as code
 

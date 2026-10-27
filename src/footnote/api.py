@@ -22,7 +22,7 @@ log = logging.getLogger("footnote.api")
 app = FastAPI(title="Footnote", description="Answers about SEC 10-K filings that cite their source.")
 _state: dict = {}
 # Part of every cache key: bump it to retire cached answers after the data or the prompts change.
-CACHE_VERSION = "2"
+CACHE_VERSION = "3"
 
 
 class Question(BaseModel):

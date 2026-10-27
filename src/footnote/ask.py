@@ -41,9 +41,8 @@ SECTION_TITLES = {
     "7A": "Market Risk",
 }
 OUT_OF_SCOPE = (
-    "I can only answer questions about the annual reports (10-Ks) of the companies Footnote covers: "
-    + ", ".join(c.name for c in COMPANIES)
-    + "."
+    "I can only answer questions about the annual reports (10-Ks) of the companies Footnote covers, "
+    "for fiscal 2021 onward: " + ", ".join(c.name for c in COMPANIES) + "."
 )
 NOTHING_FOUND = "I couldn't find anything in these filings that answers that."
 
@@ -109,12 +108,16 @@ WRITER_INSTRUCTIONS = """\
 You answer questions about US public companies from their annual reports (10-K filings), using only \
 the numbered sources given with the question.
 
-- Cite every claim with the ids of the sources it rests on, like [S2] or [F1][S4], at the end of the sentence.
+- End every sentence that says something from the sources with the ids it rests on, like [S2] or [F1][S4].
 - Take figures only from F sources, as written there, and name the fiscal year. Compute a change or ratio \
 only if the question asks for one, and cite the figures it's computed from.
 - The passages are excerpts. Report what the filing says ("Apple says..."); add nothing from outside them.
+- Put words in quotation marks only if they appear exactly in the source you cite.
+- When you name the year of a filing, use the fiscal year shown in its source line.
+- Don't describe the sources themselves (where a figure is tagged, what the excerpts cover): the \
+reader sees them.
 - If the sources don't answer the question, say so in one sentence.
-- At most 170 words. Plain prose: no headings, no preamble."""
+- At most 150 words. Plain prose: no headings, no preamble."""
 
 
 def build_graph(planner: Planner, writer: Writer, embedder, vectors: Vectors, figures_for: FiguresFor):
@@ -156,7 +159,12 @@ def build_graph(planner: Planner, writer: Writer, embedder, vectors: Vectors, fi
         found = []
         for ticker in p.tickers:
             years = figures_for(ticker).get("years", {})
-            wanted = [str(y) for y in p.fiscal_years if str(y) in years] or sorted(years)[-2:]
+            # Asked for years: only those. Asked for none: the latest two, for context.
+            # A year Footnote doesn't have gets nothing, never a neighbouring year's figure.
+            if p.fiscal_years:
+                wanted = [str(y) for y in p.fiscal_years if str(y) in years]
+            else:
+                wanted = sorted(years)[-2:]
             for year in wanted:
                 figures = years[year]["figures"]
                 for name in p.metrics:
@@ -248,6 +256,12 @@ def keep_known_citations(text: str, by_id: dict[str, dict]) -> tuple[str, list[d
     return re.sub(r" +([.,;])", r"\1", cleaned).strip(), cited
 
 
+def whole_sentences(text: str) -> str:
+    """An answer cut off by the length limit, trimmed back to its last complete sentence."""
+    ends = [m.end() for m in re.finditer(r"[.!?](?:\s*\[[SF]\d+\])*", text)]
+    return text[: ends[-1]].strip() if ends else text.strip()
+
+
 def _and(conditions: list[dict]) -> dict | None:
     if not conditions:
         return None
@@ -260,12 +274,15 @@ def claude(model: str, api_key: str) -> tuple[Planner, Writer]:
 
     planning = ChatAnthropic(model=model, api_key=api_key, max_tokens=500, max_retries=2)
     planning = planning.with_structured_output(Plan)
-    writing = ChatAnthropic(model=model, api_key=api_key, max_tokens=700, max_retries=2)
+    writing = ChatAnthropic(model=model, api_key=api_key, max_tokens=2000, max_retries=2)
 
     def planner(question: str) -> Plan:
         return planning.invoke([("system", planner_instructions()), ("human", question)])
 
     def writer(system: str, user: str) -> str:
-        return writing.invoke([("system", system), ("human", user)]).text
+        reply = writing.invoke([("system", system), ("human", user)])
+        if reply.response_metadata.get("stop_reason") == "max_tokens":
+            return whole_sentences(reply.text)
+        return reply.text
 
     return planner, writer
