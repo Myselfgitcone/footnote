@@ -112,7 +112,9 @@ report date. So "Apple's 2024 revenue" is the $391,035 million in Apple's 2024
 The API is FastAPI, run in a Lambda behind a function URL (through Mangum).
 Every question costs a Claude call, so answers are cached for a day and new
 questions are capped per day. Traces of every answer go to LangSmith. The page
-in `site/` is published to GitHub Pages after each deploy.
+in `site/` is published to GitHub Pages after each deploy and every morning,
+with `status.json` alongside it: companies, filings, passages and the latest
+filing, read by the page and by the portfolio hub.
 
 **Checked for real.** CI asks Claude three questions through the real index.
 It checks that Apple's fiscal 2024 revenue comes back as exactly $391,035

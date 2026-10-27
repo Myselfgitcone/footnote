@@ -34,6 +34,18 @@ form.addEventListener("submit", (event) => {
   ask(input.value.trim());
 });
 
+// What's covered right now, written each morning by the site workflow.
+fetch("status.json", { cache: "no-store" })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((s) => {
+    if (!s) return;
+    const when = new Date(s.generated_at).toLocaleDateString([], { month: "short", day: "numeric" });
+    $("coverage").textContent =
+      `${s.filings} annual reports · ${s.companies} companies · fiscal ${s.fiscal_years[0]}–${s.fiscal_years[1]} · ` +
+      `${s.passages.toLocaleString()} passages · updated ${when}`;
+  })
+  .catch(() => {});
+
 const fromUrl = new URLSearchParams(location.search).get("q");
 if (fromUrl) { input.value = fromUrl; ask(fromUrl); }
 

@@ -36,6 +36,7 @@
     h1 { font: 600 clamp(40px, 7vw, 64px)/1.02 var(--display); letter-spacing: -0.02em; margin: 28px 0 12px; }
     h1 sup { font-size: 0.38em; color: var(--cite); font-family: var(--mono); font-weight: 500; vertical-align: 1.4em; }
     .lede { font-size: 19px; color: var(--muted); max-width: 640px; margin: 0 0 30px; }
+    .coverage { font: 400 13px/1.5 var(--mono); color: var(--muted); margin: -18px 0 24px; min-height: 1.5em; }
 
     form { display: flex; gap: 10px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 8px; box-shadow: 0 1px 0 var(--rule); }
     input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--ink); font: 400 17px var(--body); padding: 10px 12px; }
@@ -93,6 +94,7 @@
     </nav>
     <h1>Footnote<sup>[1]</sup></h1>
     <p class="lede">Ask about twenty companies' annual reports. Every claim cites the passage it came from, and every figure is the one the company filed with the SEC.</p>
+    <p class="coverage" id="coverage"></p>
 
     <form id="ask">
       <label for="q" class="hidden">Question</label>
