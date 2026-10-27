@@ -73,11 +73,24 @@ def facts_key(ticker: str) -> str:
     return f"clean/facts/{ticker}.json"
 
 
+def companyfacts_key(ticker: str, cik: int, primary: bool = True) -> str:
+    """The company's own CIK keeps the original name; a predecessor's carries its CIK."""
+    return (
+        f"raw/edgar/{ticker}/companyfacts.json" if primary else f"raw/edgar/{ticker}/companyfacts-{cik}.json"
+    )
+
+
 def build(companyfacts: dict, filings: list[dict]) -> dict:
-    """{fiscal year: {metric: figure}} for each of the company's 10-Ks in `filings`."""
-    gaap = companyfacts.get("facts", {}).get("us-gaap", {})
+    """{fiscal year: {metric: figure}} for each of the company's 10-Ks in `filings`.
+
+    `companyfacts` is one companyfacts file, or {cik: file} when the filings came
+    from more than one registrant (a company and its predecessor).
+    """
+    by_cik = companyfacts if "facts" not in companyfacts else None
     years: dict[str, dict] = {}
     for filing in sorted(filings, key=lambda f: f["period"]):
+        source = by_cik.get(filing.get("cik"), {}) if by_cik is not None else companyfacts
+        gaap = source.get("facts", {}).get("us-gaap", {})
         found = {}
         for name, metric in METRICS.items():
             figure = _find(gaap, metric, filing["accession"], filing["period"])
@@ -89,8 +102,11 @@ def build(companyfacts: dict, filings: list[dict]) -> dict:
 
 
 def write(store: Store, ticker: str, filings: list[dict]) -> dict:
-    companyfacts = get_json(store, f"raw/edgar/{ticker}/companyfacts.json", {})
-    built = build(companyfacts, filings)
+    primary = get_json(store, companyfacts_key(ticker, 0), {})
+    by_cik = {}
+    for cik in {f.get("cik") for f in filings}:
+        by_cik[cik] = get_json(store, companyfacts_key(ticker, cik, primary=False)) or primary
+    built = build(by_cik, filings)
     put_json(store, facts_key(ticker), built)
     return built
 

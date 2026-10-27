@@ -98,3 +98,18 @@ def test_the_lambda_handler_speaks_function_url_events(client):
     }
     response = api.handler(event, None)
     assert response["statusCode"] == 200 and '"ok":true' in response["body"]
+
+
+def test_an_answer_that_found_nothing_is_not_cached(client):
+    http, _ = client
+
+    class Empty(FakeAsker):
+        def invoke(self, state):
+            self.questions.append(state["question"])
+            return {"answer": "nothing", "sources": [], "plan": Plan(in_scope=True)}
+
+    empty = Empty()
+    api._state["asker"] = empty
+    http.post("/ask", json={"question": "Exxon's 2024 net income?"})
+    again = http.post("/ask", json={"question": "Exxon's 2024 net income?"})
+    assert again.json()["cached"] is False and len(empty.questions) == 2

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from footnote import facts, sections
+from footnote.companies import PREDECESSORS
 from footnote.edgar import Edgar, Filing
 from footnote.store import Store, get_json, put_json
 
@@ -35,6 +36,7 @@ class Report:
     failed: dict[str, str] = field(default_factory=dict)
     missing_sections: dict[str, list[str]] = field(default_factory=dict)
     remaining: int = 0
+    no_filings: list[str] = field(default_factory=list)
     seconds: float = 0.0
 
     def as_dict(self) -> dict:
@@ -51,6 +53,8 @@ class Report:
             line += f"\nSections not found: {gaps}"
         if self.failed:
             line += "\nFailed: " + "; ".join(f"{k}: {v}" for k, v in self.failed.items())
+        if self.no_filings:
+            line += "\nNo filings found for: " + ", ".join(self.no_filings)
         return line
 
 
@@ -74,7 +78,13 @@ def run(
 
     for ticker, (cik, _) in ciks.items():
         report.companies += 1
-        filings = edgar.filings(ticker, cik, forms, since_year)
+        found: dict[str, Filing] = {}
+        for one in (cik, *PREDECESSORS.get(ticker, ())):
+            found |= {f.accession: f for f in edgar.filings(ticker, one, forms, since_year)}
+        filings = sorted(found.values(), key=lambda f: f.period)
+        if not filings:
+            # A company with no filings is almost always a lookup problem, not a quiet year.
+            report.no_filings.append(ticker)
         report.filings_seen += len(filings)
         new = [f for f in filings if not store.exists(clean_key(f))]
         report.skipped += len(filings) - len(new)
@@ -92,12 +102,13 @@ def run(
             gaps = [item for item in sections.KEEP if item not in entry["sections"] and item != "1C"]
             if gaps:
                 report.missing_sections[f"{ticker} FY{filing.fiscal_year}"] = gaps
-        if new:
-            # The company's XBRL facts change with every filing; refresh them alongside.
-            store.put(f"raw/edgar/{ticker}/companyfacts.json", edgar.company_facts(cik), "application/json")
+        # Each registrant's XBRL facts change with every filing; refresh them alongside.
+        for one in sorted({f.cik for f in new}):
+            key = facts.companyfacts_key(ticker, one, primary=one == cik)
+            store.put(key, edgar.company_facts(one), "application/json")
         if new or not store.exists(facts.facts_key(ticker)):
             mine = [e for e in catalog.values() if e["ticker"] == ticker]
-            if mine and store.exists(f"raw/edgar/{ticker}/companyfacts.json"):
+            if mine:
                 facts.write(store, ticker, mine)
 
     put_json(store, CATALOG, sorted(catalog.values(), key=lambda e: (e["ticker"], e["period"])))
